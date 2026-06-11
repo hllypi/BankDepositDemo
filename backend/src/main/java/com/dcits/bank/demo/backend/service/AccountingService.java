@@ -32,8 +32,8 @@ public class AccountingService {
         // 2. 凭证号 = 交易流水号，两号合一
         String voucherId = trans.getTransNo();
 
-        AccountingEnums.AccountCodedebitCode;
-        AccountingEnums.AccountCodecreditCode;
+        AccountingEnums.AccountCode debitCode;
+        AccountingEnums.AccountCode creditCode;
         String debitSummary;
         String creditSummary;
         BigDecimal amount = trans.getTransAmount();
