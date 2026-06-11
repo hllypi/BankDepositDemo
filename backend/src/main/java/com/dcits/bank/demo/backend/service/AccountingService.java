@@ -43,8 +43,8 @@ public class AccountingService {
             // 转入方：借1004行内清算 / 贷1001活期存款
             debitCode = tt.getCreditCode();
             creditCode = tt.getDebitCode();
-            debitSummary = "行内清算";
-            creditSummary = "活期存款入账";
+            debitSummary = tt.getCreditSummary();
+            creditSummary = tt.getDebitSummary();
         } else {
             // 通用：直接取模板配置
             debitCode = tt.getDebitCode();

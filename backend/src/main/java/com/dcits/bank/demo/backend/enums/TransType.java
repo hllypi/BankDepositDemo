@@ -12,16 +12,16 @@ public enum TransType {
 
     DEPOSIT("01", "存款",
             AccountingEnums.AccountCode.CASH_IN_VAULT,  AccountingEnums.AccountCode.DEMAND_DEPOSIT,
-            "现金存入",                                  "活期存款入账"),
+            "现金存入",                                  "活期存款"),
 
     WITHDRAW("02", "取款",
             AccountingEnums.AccountCode.DEMAND_DEPOSIT, AccountingEnums.AccountCode.CASH_IN_VAULT,
-            "活期存款支取",                              "现金付出"),
+            "活期存款",                              "库存现金"),
 
     /** 转账分录由 DcFlag 决定：D(转出)→借1001贷1004，C(转入)→借1004贷1001 */
     TRANSFER("03", "转账",
             AccountingEnums.AccountCode.DEMAND_DEPOSIT, AccountingEnums.AccountCode.INTERNAL_CLEARING,
-            "活期存款转出",                              "行内清算"),
+            "活期存款",                              "行内清算"),
 
     INTEREST("04", "结息",
             AccountingEnums.AccountCode.INTEREST_EXPENSE, AccountingEnums.AccountCode.DEMAND_DEPOSIT,

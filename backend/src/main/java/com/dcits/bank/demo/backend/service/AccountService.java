@@ -225,18 +225,20 @@ public class AccountService {
         // 6. 乐观锁：转入方增加
         BigDecimal toBalanceAfter = updateBalanceWithRetry(toAccount.getAccountId(), req.getTransAmount());
 
-        // 7. 双流水记录（先插入转出，再插入转入，最后互相更新 related_trans_id）
-        BusinessTransaction fromTrans = buildTransaction(fromAccount.getAccountId(), req.getOutTradeNo(),
+        // 7. 双流水记录 — 共用同一个交易流水号，通过 related_trans_id 关联
+        String transferNo = generateTransNo(fromAccount.getBranchCode(), TransType.TRANSFER.getCode());
+
+        BusinessTransaction fromTrans = buildTransaction(transferNo, fromAccount.getAccountId(), req.getOutTradeNo(),
                 TransactionEnums.DcFlag.DEBIT.getCode(), TransType.TRANSFER.getCode(),
-                req.getTransAmount(), fromBalanceAfter, req.getChannel(), req.getOperatorId(), fromAccount.getBranchCode());
+                req.getTransAmount(), fromBalanceAfter, req.getChannel(), req.getOperatorId());
         fromTrans.setCounterPartyAccount(req.getToCardNo());
         fromTrans.setRemark(req.getRemark());
         transactionMapper.insert(fromTrans);
 
-        // 转入方幂等号加后缀，避免与转出方的 uk_out_trade_no 冲突
-        BusinessTransaction toTrans = buildTransaction(toAccount.getAccountId(), req.getOutTradeNo() + "_TO",
+        // 转入方幂等号加后缀避唯一约束，交易流水号与转出方相同
+        BusinessTransaction toTrans = buildTransaction(transferNo, toAccount.getAccountId(), req.getOutTradeNo() + "_TO",
                 TransactionEnums.DcFlag.CREDIT.getCode(), TransType.TRANSFER.getCode(),
-                req.getTransAmount(), toBalanceAfter, req.getChannel(), req.getOperatorId(), toAccount.getBranchCode());
+                req.getTransAmount(), toBalanceAfter, req.getChannel(), req.getOperatorId());
         toTrans.setCounterPartyAccount(req.getFromCardNo());
         toTrans.setRelatedTransId(fromTrans.getTransId());
         toTrans.setRemark(req.getRemark());
@@ -409,15 +411,23 @@ public class AccountService {
         return account;
     }
 
-    /** 构建交易流水对象（公共字段填充）。 */
     /** 构建交易流水对象，自动生成业务交易流水号。 */
     private BusinessTransaction buildTransaction(Long accountId, String outTradeNo,
                                                   String dcFlag, String transType,
                                                   BigDecimal amount, BigDecimal balanceAfter,
                                                   String channel, String operatorId, String branchCode) {
+        return buildTransaction(generateTransNo(branchCode, transType),
+                accountId, outTradeNo, dcFlag, transType, amount, balanceAfter, channel, operatorId);
+    }
+
+    /** 构建交易流水对象，使用指定的 transNo（转账双方共用）。 */
+    private BusinessTransaction buildTransaction(String transNo, Long accountId, String outTradeNo,
+                                                  String dcFlag, String transType,
+                                                  BigDecimal amount, BigDecimal balanceAfter,
+                                                  String channel, String operatorId) {
         BusinessTransaction trans = new BusinessTransaction();
+        trans.setTransNo(transNo);
         trans.setAccountId(accountId);
-        trans.setTransNo(generateTransNo(branchCode, transType));
         trans.setOutTradeNo(outTradeNo);
         trans.setDcFlag(dcFlag);
         trans.setTransType(transType);
