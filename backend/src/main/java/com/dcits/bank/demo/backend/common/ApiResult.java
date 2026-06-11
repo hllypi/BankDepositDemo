@@ -1,11 +1,18 @@
 package com.dcits.bank.demo.backend.common;
 
 import com.dcits.bank.demo.backend.enums.ResultCode;
+import io.swagger.v3.oas.annotations.media.Schema;
 
+@Schema(description = "统一响应体")
 public class ApiResult<T> {
 
+    @Schema(description = "结果码（0-成功）", example = "0")
     private int result_code;
+
+    @Schema(description = "结果描述", example = "成功")
     private String result_msg;
+
+    @Schema(description = "业务数据")
     private T data;
 
     private ApiResult(int result_code, String result_msg, T data) {

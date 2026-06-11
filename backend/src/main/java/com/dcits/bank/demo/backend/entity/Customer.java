@@ -12,6 +12,9 @@ public class Customer {
     private String idNumber;
     private String phone;
     private String address;
+    private LocalDate dateOfBirth;
+    private String gender;
+    private Integer age;
     private String branch;
     private Integer status;
     private LocalDateTime createdTime;
