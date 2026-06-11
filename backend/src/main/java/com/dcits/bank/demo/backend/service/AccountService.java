@@ -17,6 +17,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
 
@@ -307,13 +308,23 @@ public class AccountService {
      * 密码鉴权 + 时间跨度风控（≤90天）+ 分页检索 + 对外脱敏。
      */
     public TransactionQueryResponse queryTransactions(TransactionQueryRequest req) {
+        if (isEmpty(req.getCardNo())) throw new BusinessException(ResultCode.PARAM_MISSING, "卡号不能为空");
+        if (isEmpty(req.getPassword())) throw new BusinessException(ResultCode.PARAM_MISSING, "密码不能为空");
+        if (isEmpty(req.getStartDate())) throw new BusinessException(ResultCode.PARAM_MISSING, "起始时间不能为空");
+        if (isEmpty(req.getEndDate())) throw new BusinessException(ResultCode.PARAM_MISSING, "结束时间不能为空");
+
         // 1. 鉴权
         Account account = locateAndAuthAccount(req.getCardNo(), req.getPassword());
 
         // 2. 时间跨度风控
-        LocalDateTime start = LocalDateTime.parse(req.getStartDate(), java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
-        LocalDateTime end = LocalDateTime.parse(req.getEndDate(), java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
-        if (java.time.temporal.ChronoUnit.DAYS.between(start, end) > 90) {
+        LocalDateTime start, end;
+        try {
+            start = LocalDateTime.parse(req.getStartDate(), DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+            end = LocalDateTime.parse(req.getEndDate(), DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+        } catch (Exception e) {
+            throw new BusinessException(ResultCode.PARAM_FORMAT_ERROR, "时间格式错误，应为 yyyy-MM-dd HH:mm:ss");
+        }
+        if (ChronoUnit.DAYS.between(start, end) > 90) {
             throw new BusinessException(ResultCode.TIME_RANGE_TOO_LARGE);
         }
         if (end.isBefore(start)) {
@@ -332,7 +343,7 @@ public class AccountService {
 
         // 5. 组装并脱敏（不暴露 trans_id、对方账号完整明文等）
         List<TransactionItem> items = list.stream().map(t -> new TransactionItem(
-                t.getTransTime().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")),
+                t.getTransTime().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")),
                 t.getTransType(),
                 t.getDcFlag(),
                 t.getTransAmount(),
