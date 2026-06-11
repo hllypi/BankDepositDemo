@@ -23,7 +23,9 @@
       "Bash(python3 *)",
       "Bash(curl -s -X POST http://localhost:8080/api/account/open -H 'Content-Type: application/json' -H 'X-Auth-Token: 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08' -d '{\"customerName\":\"张三\",\"idType\":\"01\",\"idNumber\":\"110101199001011237\",\"password\":\"123456\",\"phone\":\"13800138000\",\"address\":\"北京市朝阳区\",\"accountLevel\":1,\"branchCode\":\"010001\",\"channel\":\"APP\"}')",
       "Bash(curl -s -X POST http://localhost:8080/api/account/open -H 'Content-Type: application/json' -H 'X-Auth-Token: 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08' -d '{\"customerName\":\"张三\",\"idType\":\"01\",\"idNumber\":\"110101199001011237\",\"password\":\"123456\",\"phone\":\"13800138000\",\"address\":\"北京市朝阳区\",\"accountLevel\":2,\"branchCode\":\"010001\",\"channel\":\"COUNTER\"}')",
-      "Bash(curl -s -X POST http://localhost:8080/api/account/open -H 'Content-Type: application/json' -H 'X-Auth-Token: 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08' -d '{\"customerName\":\"李四\",\"idType\":\"01\",\"idNumber\":\"110101199002022345\",\"password\":\"123456\",\"phone\":\"13900139000\",\"address\":\"上海市浦东新区\",\"accountLevel\":1,\"branchCode\":\"010001\",\"channel\":\"APP\"}')"
+      "Bash(curl -s -X POST http://localhost:8080/api/account/open -H 'Content-Type: application/json' -H 'X-Auth-Token: 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08' -d '{\"customerName\":\"李四\",\"idType\":\"01\",\"idNumber\":\"110101199002022345\",\"password\":\"123456\",\"phone\":\"13900139000\",\"address\":\"上海市浦东新区\",\"accountLevel\":1,\"branchCode\":\"010001\",\"channel\":\"APP\"}')",
+      "Bash(curl *)",
+      "Bash(mysql *)"
     ]
   }
 }

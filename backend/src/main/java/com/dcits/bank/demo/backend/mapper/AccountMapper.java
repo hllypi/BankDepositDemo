@@ -2,6 +2,7 @@ package com.dcits.bank.demo.backend.mapper;
 
 import com.dcits.bank.demo.backend.entity.Account;
 import org.apache.ibatis.annotations.*;
+import java.math.BigDecimal;
 
 @Mapper
 public interface AccountMapper {
@@ -25,7 +26,9 @@ public interface AccountMapper {
 
     @Update("UPDATE account SET balance = #{balance}, version = version + 1 " +
             "WHERE account_id = #{accountId} AND version = #{version}")
-    int updateBalanceWithVersion(Account account);
+    int updateBalanceWithVersion(@Param("accountId") Long accountId,
+                                  @Param("balance") BigDecimal balance,
+                                  @Param("version") int version);
 
     @Update("UPDATE account SET balance = #{balance}, last_settlement_date = #{lastSettlementDate}, " +
             "version = version + 1 WHERE account_id = #{accountId} AND version = #{version}")
