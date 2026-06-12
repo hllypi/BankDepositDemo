@@ -19,7 +19,9 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ThreadLocalRandom;
 
 @Service
@@ -611,6 +613,80 @@ public class AccountService {
             if (affected > 0) return;
         }
         throw new BusinessException(ResultCode.CONCURRENT_CONFLICT);
+    }
+
+    // 功能11：结息
+
+    @Transactional(rollbackFor = Exception.class)
+    public InterestSettlementDTO settleInterest(Long accountId) {
+        Account account = accountMapper.selectById(accountId);
+        if (account == null) throw new BusinessException(ResultCode.ACCOUNT_NOT_FOUND);
+        if (account.getStatus() != AccountEnums.Status.NORMAL.getCode())
+            throw new BusinessException(ResultCode.ACCOUNT_FROZEN, "账户状态异常，无法结息");
+
+        LocalDate startDate = account.getLastSettlementDate() != null
+                ? account.getLastSettlementDate().plusDays(1) : account.getOpenDate().plusDays(1);
+        LocalDate endDate = LocalDate.now().minusDays(1);
+        if (startDate.isAfter(endDate)) return null;
+
+        BigDecimal accumulated = dailyBalanceMapper.sumBalanceByAccountAndDateRange(accountId, startDate, endDate);
+        if (accumulated == null || accumulated.compareTo(BigDecimal.ZERO) == 0) return null;
+
+        InterestRateConfig rateConfig = interestRateConfigMapper.selectActiveRate(
+                account.getAccountType(), account.getCurrency(), LocalDate.now());
+        if (rateConfig == null) throw new BusinessException(ResultCode.RATE_NOT_FOUND);
+
+        int interestDays = (int) ChronoUnit.DAYS.between(startDate, endDate) + 1;
+        BigDecimal interestAmount = accumulated.multiply(rateConfig.getRateValue())
+                .setScale(2, RoundingMode.FLOOR);
+        if (interestAmount.compareTo(BigDecimal.ZERO) == 0) return null;
+
+        updateBalanceAndSettlementWithRetry(accountId, interestAmount);
+        Account latest = accountMapper.selectById(accountId);
+
+        BusinessTransaction trans = buildTransaction(accountId,
+                "INT_" + accountId + "_" + System.currentTimeMillis(),
+                TransactionEnums.DcFlag.CREDIT.getCode(), TransType.INTEREST.getCode(),
+                interestAmount, latest.getBalance(), "SYSTEM", "SYSTEM", account.getBranchCode());
+        trans.setRemark("活期存款结息");
+        transactionMapper.insert(trans);
+        accountingService.generateEntries(trans);
+
+        InterestSettlement settlement = new InterestSettlement();
+        settlement.setAccountId(accountId);
+        settlement.setSettlementDate(LocalDate.now());
+        settlement.setAccumulatedAmount(accumulated);
+        settlement.setAppliedRate(rateConfig.getRateValue());
+        settlement.setInterestDays(interestDays);
+        settlement.setInterestAmount(interestAmount);
+        settlement.setTransId(trans.getTransId());
+        interestSettlementMapper.insert(settlement);
+
+        return new InterestSettlementDTO(settlement.getSettlementId(), settlement.getSettlementDate(),
+                accumulated, rateConfig.getRateValue(), interestDays, interestAmount, trans.getTransId());
+    }
+
+    /**
+     * 批量结息 — 每账户通过代理走独立事务，单账户失败不中断整体。
+     */
+    public Map<Long, String> settleInterestAll() {
+        List<Account> accounts = accountMapper.selectAllNormal();
+        Map<Long, String> result = new LinkedHashMap<>();
+        for (Account acc : accounts) {
+            try {
+                InterestSettlementDTO dto = settleInterestSelf(acc.getAccountId());
+                result.put(acc.getAccountId(), dto != null ? "SUCCESS: " + dto.getInterestAmount() + "元" : "无需结息");
+            } catch (Exception e) {
+                result.put(acc.getAccountId(), "FAILED: " + (e instanceof BusinessException ? e.getMessage() : "系统错误"));
+            }
+        }
+        return result;
+    }
+
+    /** 代理方法，让 settleInterestAll 的每账户调用走独立的 @Transactional */
+    @Transactional(rollbackFor = Exception.class)
+    public InterestSettlementDTO settleInterestSelf(Long accountId) {
+        return settleInterest(accountId);
     }
 
     // ==================== 公共辅助方法 ====================

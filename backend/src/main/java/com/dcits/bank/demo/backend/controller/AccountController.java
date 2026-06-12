@@ -7,6 +7,8 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Map;
+
 @Tag(name = "账户管理", description = "开户、存款、取款、转账、销户等账户全生命周期管理")
 @RestController
 @RequestMapping("/api/account")
@@ -76,5 +78,17 @@ public class AccountController {
     @PostMapping("/daily-balance")
     public ApiResult<DailyBalanceResponse> dailyBalance() {
         return ApiResult.success(accountService.dailyBalance());
+    }
+
+    @Operation(summary = "单账户结息", description = "根据日积数计算利息并更新账户余额，生成会计分录和结息审计记录。")
+    @PostMapping("/settle/{accountId}")
+    public ApiResult<InterestSettlementDTO> settleInterest(@PathVariable Long accountId) {
+        return ApiResult.success(accountService.settleInterest(accountId));
+    }
+
+    @Operation(summary = "全部结息", description = "对所有正常账户逐笔执行结息，每账户独立事务，返回每账户执行结果。")
+    @PostMapping("/settle/all")
+    public ApiResult<Map<Long, String>> settleInterestAll() {
+        return ApiResult.success(accountService.settleInterestAll());
     }
 }
