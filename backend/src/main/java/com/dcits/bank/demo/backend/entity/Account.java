@@ -1,6 +1,7 @@
 package com.dcits.bank.demo.backend.entity;
 
 import lombok.Data;
+import lombok.ToString;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -21,6 +22,7 @@ public class Account {
     private String cardNo;
 
     /** 密码密文（BCrypt + 随机Salt，不可逆） */
+    @ToString.Exclude
     private String passwordHash;
 
     /** 所属客户ID（关联 customer.customer_id） */

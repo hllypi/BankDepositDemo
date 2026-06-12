@@ -9,6 +9,8 @@ import com.dcits.bank.demo.backend.util.AccountNoGenerator;
 import com.dcits.bank.demo.backend.util.IdCardUtil;
 import com.dcits.bank.demo.backend.util.LuhnUtil;
 import com.dcits.bank.demo.backend.util.PasswordUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,8 +29,8 @@ import java.util.concurrent.ThreadLocalRandom;
 @Service
 public class AccountService {
 
+    private static final Logger log = LoggerFactory.getLogger(AccountService.class);
     private static final String CARD_BIN = "621700";
-    /** 乐观锁最大重试次数 */
     private static final int MAX_RETRY = 3;
 
     private final CustomerMapper customerMapper;
@@ -469,7 +471,7 @@ public class AccountService {
                 dailyBalanceMapper.insert(db);
                 success++;
             } catch (Exception e) {
-                // 单账户失败不中断
+                log.error("日终快照失败 accountId={}", acc.getAccountId(), e);
             }
         }
         return new DailyBalanceResponse(yesterday, accounts.size(), success, skip);
@@ -692,18 +694,8 @@ public class AccountService {
     // ==================== 公共辅助方法 ====================
 
     /**
-     * 乐观锁更新余额，并发冲突时重试（最多 {@link #MAX_RETRY} 次）。
-     * 每次重试重新读取最新的 account 版本号。
-     */
-    /**
-     * 乐观锁更新余额。
-     * 每次重试都重新读取最新余额和版本号，避免基于过期余额计算导致"丢钱"。
-     * @param delta 资金变动量：存款/转入为正，取款/转出为负
-     */
-    /**
      * 乐观锁更新余额。
      * 每次重试都重新读取最新余额和版本号，delta 为负时每轮校验可用余额。
-     * @param delta 资金变动量：存款/转入为正，取款/转出为负
      */
     private BigDecimal updateBalanceWithRetry(Long accountId, BigDecimal delta) {
         for (int i = 0; i < MAX_RETRY; i++) {

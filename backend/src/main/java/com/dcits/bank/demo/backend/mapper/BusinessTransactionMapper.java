@@ -16,7 +16,6 @@ public interface BusinessTransactionMapper {
     @Select("SELECT * FROM business_transaction WHERE out_trade_no = #{outTradeNo}")
     BusinessTransaction selectByOutTradeNo(@Param("outTradeNo") String outTradeNo);
 
-    /** 根据主键查询交易流水 */
     /** 查询指定账户在指定日期的最后一笔交易（用于日终余额快照） */
     @Select("SELECT * FROM business_transaction WHERE account_id = #{accountId} " +
             "AND trans_time >= #{startTime} AND trans_time < #{endTime} " +
