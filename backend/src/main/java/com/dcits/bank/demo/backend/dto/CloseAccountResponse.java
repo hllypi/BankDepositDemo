@@ -6,9 +6,6 @@ import lombok.Data;
 
 import java.time.LocalDate;
 
-/**
- * 销户响应 DTO
- */
 @Data
 @AllArgsConstructor
 @Schema(description = "销户响应")
@@ -21,8 +18,8 @@ public class CloseAccountResponse {
     private String cardNo;
 
     @Schema(description = "销户日期")
-    private LocalDate closedDate;
+    private LocalDate closeDate;
 
-    @Schema(description = "账户状态")
+    @Schema(description = "账户状态（2-销户）")
     private Integer status;
 }

@@ -7,15 +7,12 @@ import lombok.Data;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 
-/**
- * 账户信息响应 DTO
- */
 @Data
 @AllArgsConstructor
 @Schema(description = "账户信息响应")
 public class AccountInfoResponse {
 
-    @Schema(description = "银行卡号（脱敏）", example = "621700*******1077")
+    @Schema(description = "银行卡号（脱敏）")
     private String cardNo;
 
     @Schema(description = "核心内部账号")
