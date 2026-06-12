@@ -17,6 +17,20 @@ public interface BusinessTransactionMapper {
     BusinessTransaction selectByOutTradeNo(@Param("outTradeNo") String outTradeNo);
 
     /** 根据主键查询交易流水 */
+    /** 查询指定账户在指定日期的最后一笔交易（用于日终余额快照） */
+    @Select("SELECT * FROM business_transaction WHERE account_id = #{accountId} " +
+            "AND trans_time >= #{startTime} AND trans_time < #{endTime} " +
+            "ORDER BY trans_time DESC LIMIT 1")
+    BusinessTransaction selectLastByAccountAndDate(@Param("accountId") Long accountId,
+                                                    @Param("startTime") LocalDateTime startTime,
+                                                    @Param("endTime") LocalDateTime endTime);
+
+    /** 查询指定账户在指定日期之前的最后一笔交易（无当日交易时回溯） */
+    @Select("SELECT * FROM business_transaction WHERE account_id = #{accountId} " +
+            "AND trans_time < #{before} ORDER BY trans_time DESC LIMIT 1")
+    BusinessTransaction selectLastBefore(@Param("accountId") Long accountId,
+                                          @Param("before") LocalDateTime before);
+
     @Select("SELECT * FROM business_transaction WHERE trans_id = #{transId}")
     BusinessTransaction selectById(@Param("transId") Long transId);
 

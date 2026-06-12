@@ -32,17 +32,20 @@ public class AccountService {
     private final AccountMapper accountMapper;
     private final BusinessTransactionMapper transactionMapper;
     private final CashTransactionMapper cashTransactionMapper;
+    private final DailyBalanceMapper dailyBalanceMapper;
     private final AccountingService accountingService;
 
     public AccountService(CustomerMapper customerMapper,
                           AccountMapper accountMapper,
                           BusinessTransactionMapper transactionMapper,
                           CashTransactionMapper cashTransactionMapper,
+                          DailyBalanceMapper dailyBalanceMapper,
                           AccountingService accountingService) {
         this.customerMapper = customerMapper;
         this.accountMapper = accountMapper;
         this.transactionMapper = transactionMapper;
         this.cashTransactionMapper = cashTransactionMapper;
+        this.dailyBalanceMapper = dailyBalanceMapper;
         this.accountingService = accountingService;
     }
 
@@ -420,6 +423,47 @@ public class AccountService {
         if (name == null || name.isEmpty()) return name;
         if (name.length() == 1) return name;
         return name.charAt(0) + "*".repeat(name.length() - 1);
+    }
+
+    // 日终余额快照
+
+    /**
+     * 日终余额快照 — 对所有正常账户做每日余额快照，存入日积数底表。
+     * 已存在当日快照的账户自动跳过（幂等），单账户失败不中断整体流程。
+     */
+    public DailyBalanceResponse dailyBalance() {
+        LocalDate yesterday = LocalDate.now().minusDays(1);
+        LocalDateTime startOfYesterday = yesterday.atStartOfDay();
+        LocalDateTime startOfToday = LocalDate.now().atStartOfDay();
+
+        List<Account> accounts = accountMapper.selectAllNormal();
+        int success = 0, skip = 0;
+        for (Account acc : accounts) {
+            try {
+                if (dailyBalanceMapper.selectByAccountAndDate(acc.getAccountId(), yesterday) != null) {
+                    skip++;
+                    continue;
+                }
+                BigDecimal endBalance;
+                BusinessTransaction lastTrans = transactionMapper
+                        .selectLastByAccountAndDate(acc.getAccountId(), startOfYesterday, startOfToday);
+                if (lastTrans != null) {
+                    endBalance = lastTrans.getBalanceAfter();
+                } else {
+                    DailyBalance prev = dailyBalanceMapper.selectLatestBefore(acc.getAccountId(), yesterday);
+                    endBalance = prev != null ? prev.getEndBalance() : BigDecimal.ZERO;
+                }
+                DailyBalance db = new DailyBalance();
+                db.setAccountId(acc.getAccountId());
+                db.setBalanceDate(yesterday);
+                db.setEndBalance(endBalance);
+                dailyBalanceMapper.insert(db);
+                success++;
+            } catch (Exception e) {
+                // 单账户失败不中断
+            }
+        }
+        return new DailyBalanceResponse(yesterday, accounts.size(), success, skip);
     }
 
     // 功能5：销户

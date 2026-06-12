@@ -71,4 +71,10 @@ public class AccountController {
     public ApiResult<AccountInfoResponse> queryAccount(@RequestBody QueryAccountRequest request) {
         return ApiResult.success(accountService.queryAccount(request));
     }
+
+    @Operation(summary = "日终余额快照", description = "对所有正常状态账户做每日余额快照，存到日积数底表。已存在当日快照的账户自动跳过。")
+    @PostMapping("/daily-balance")
+    public ApiResult<DailyBalanceResponse> dailyBalance() {
+        return ApiResult.success(accountService.dailyBalance());
+    }
 }
