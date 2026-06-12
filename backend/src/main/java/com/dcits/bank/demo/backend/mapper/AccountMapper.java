@@ -3,6 +3,7 @@ package com.dcits.bank.demo.backend.mapper;
 import com.dcits.bank.demo.backend.entity.Account;
 import org.apache.ibatis.annotations.*;
 import java.math.BigDecimal;
+import java.util.List;
 
 /**
  * 账户信息表 Mapper
@@ -47,4 +48,12 @@ public interface AccountMapper {
     @Update("UPDATE account SET status = #{status}, close_date = #{closeDate}, version = version + 1 " +
             "WHERE account_id = #{accountId} AND version = #{version}")
     int updateStatusWithVersion(Account account);
+
+    /** 查询所有正常状态账户（status=0） */
+    @Select("SELECT * FROM account WHERE status = 0")
+    List<Account> selectAllNormal();
+
+    /** 更新账户密码 */
+    @Update("UPDATE account SET password_hash = #{passwordHash} WHERE account_id = #{accountId}")
+    int updatePassword(@Param("accountId") Long accountId, @Param("passwordHash") String passwordHash);
 }

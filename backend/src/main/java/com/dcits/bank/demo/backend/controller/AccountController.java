@@ -53,4 +53,22 @@ public class AccountController {
     public ApiResult<TransactionQueryResponse> queryTransactions(@RequestBody TransactionQueryRequest request) {
         return ApiResult.success(accountService.queryTransactions(request));
     }
+
+    @Operation(summary = "销户", description = "关闭账户。验密、清空余额、乐观锁更新状态，记录销户交易流水。")
+    @PostMapping("/close")
+    public ApiResult<CloseAccountResponse> closeAccount(@RequestBody CloseAccountRequest request) {
+        return ApiResult.success(accountService.closeAccount(request));
+    }
+
+    @Operation(summary = "修改密码", description = "通过卡号+旧密码鉴权，更新为新密码。")
+    @PutMapping("/password")
+    public ApiResult<ChangePasswordResponse> changePassword(@RequestBody ChangePasswordRequest request) {
+        return ApiResult.success(accountService.changePassword(request));
+    }
+
+    @Operation(summary = "查询账户信息", description = "通过卡号+密码鉴权，返回账户完整信息（含脱敏字段）。")
+    @PostMapping("/query")
+    public ApiResult<AccountInfoResponse> queryAccount(@RequestBody QueryAccountRequest request) {
+        return ApiResult.success(accountService.queryAccount(request));
+    }
 }

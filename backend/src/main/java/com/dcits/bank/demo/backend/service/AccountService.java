@@ -357,6 +357,163 @@ public class AccountService {
         return new TransactionQueryResponse(total, items);
     }
 
+    // 功能9：修改密码
+
+    /**
+     * 修改密码 — 通过卡号+旧密码鉴权，更新为新密码。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public ChangePasswordResponse changePassword(ChangePasswordRequest req) {
+        if (isEmpty(req.getCardNo())) throw new BusinessException(ResultCode.PARAM_MISSING, "卡号不能为空");
+        if (isEmpty(req.getOldPassword())) throw new BusinessException(ResultCode.PARAM_MISSING, "原密码不能为空");
+        if (isEmpty(req.getNewPassword())) throw new BusinessException(ResultCode.PARAM_MISSING, "新密码不能为空");
+
+        Account account = locateAndAuthAccount(req.getCardNo(), req.getOldPassword());
+
+        String newPasswordHash = PasswordUtil.encode(req.getNewPassword());
+        accountMapper.updatePassword(account.getAccountId(), newPasswordHash);
+        return new ChangePasswordResponse(true, "密码修改成功");
+    }
+
+    // 功能10：查询账户信息
+
+    /**
+     * 查询账户信息 — 通过卡号+密码鉴权，返回账户完整信息（含脱敏字段）。
+     */
+    public AccountInfoResponse queryAccount(QueryAccountRequest req) {
+        if (isEmpty(req.getCardNo())) throw new BusinessException(ResultCode.PARAM_MISSING, "卡号不能为空");
+        if (isEmpty(req.getPassword())) throw new BusinessException(ResultCode.PARAM_MISSING, "密码不能为空");
+
+        Account account = locateAndAuthAccount(req.getCardNo(), req.getPassword());
+        Customer customer = customerMapper.selectById(account.getCustomerId());
+
+        // 脱敏处理
+        String maskedCardNo = maskCardNo(account.getCardNo());
+        String maskedName = maskName(customer != null ? customer.getCustomerName() : "");
+
+        BigDecimal availableBalance = account.getBalance().subtract(account.getFrozenAmount());
+
+        return new AccountInfoResponse(
+                maskedCardNo,
+                account.getAccountNo(),
+                maskedName,
+                account.getAccountType(),
+                account.getAccountLevel(),
+                account.getCurrency(),
+                account.getBranchCode(),
+                account.getBalance(),
+                account.getFrozenAmount(),
+                availableBalance,
+                account.getStatus(),
+                account.getOpenDate()
+        );
+    }
+
+    /** 卡号脱敏：只显示前6位和后4位 */
+    private String maskCardNo(String cardNo) {
+        if (cardNo == null || cardNo.length() < 10) return cardNo;
+        return cardNo.substring(0, 6) + "****" + cardNo.substring(cardNo.length() - 4);
+    }
+
+    /** 姓名脱敏：保留首字，其余用 * */
+    private String maskName(String name) {
+        if (name == null || name.isEmpty()) return name;
+        if (name.length() == 1) return name;
+        return name.charAt(0) + "*".repeat(name.length() - 1);
+    }
+
+    // 功能5：销户
+
+    /**
+     * 销户 — 验密、清空余额、乐观锁更新状态为 CLOSED。
+     * 若有冻结金额则拒绝销户；若余额>0 则先强制取款全部余额再销户。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public CloseAccountResponse closeAccount(CloseAccountRequest req) {
+        if (isEmpty(req.getCardNo())) throw new BusinessException(ResultCode.PARAM_MISSING, "卡号不能为空");
+        if (isEmpty(req.getPassword())) throw new BusinessException(ResultCode.PARAM_MISSING, "密码不能为空");
+        if (isEmpty(req.getOutTradeNo())) throw new BusinessException(ResultCode.PARAM_MISSING, "幂等号不能为空");
+
+        // 1. 幂等校验：同一 outTradeNo 代表已销户
+        BusinessTransaction existing = transactionMapper.selectByOutTradeNo(req.getOutTradeNo());
+        if (existing != null) {
+            Account acct = accountMapper.selectById(existing.getAccountId());
+            return new CloseAccountResponse(acct.getAccountNo(), acct.getCardNo(),
+                    acct.getCloseDate(), acct.getStatus());
+        }
+
+        // 2. 账户定位 + 验密 + 状态检查
+        Account account = locateAndAuthAccount(req.getCardNo(), req.getPassword());
+        if (account.getStatus() == AccountEnums.Status.CLOSED.getCode()) {
+            throw new BusinessException(ResultCode.ACCOUNT_CLOSED);
+        }
+
+        // 3. 校验冻结金额
+        if (account.getFrozenAmount().compareTo(BigDecimal.ZERO) > 0) {
+            throw new BusinessException(ResultCode.FROZEN_AMOUNT_EXISTS);
+        }
+
+        // 4. 若余额>0，先强制取款全部余额（记录流水+分录），乐观锁扣到0
+        if (account.getBalance().compareTo(BigDecimal.ZERO) > 0) {
+            BigDecimal balance = account.getBalance();
+            BigDecimal balanceAfter = updateBalanceWithRetry(account.getAccountId(), balance.negate());
+
+            String transNo = generateTransNo(account.getBranchCode(), TransType.WITHDRAW.getCode());
+            BusinessTransaction withdrawTrans = new BusinessTransaction();
+            withdrawTrans.setTransNo(transNo);
+            withdrawTrans.setAccountId(account.getAccountId());
+            withdrawTrans.setOutTradeNo(req.getOutTradeNo() + "_WTH");
+            withdrawTrans.setDcFlag(TransactionEnums.DcFlag.DEBIT.getCode());
+            withdrawTrans.setTransType(TransType.WITHDRAW.getCode());
+            withdrawTrans.setTransAmount(balance);
+            withdrawTrans.setBalanceAfter(balanceAfter);
+            withdrawTrans.setChannel("SYSTEM");
+            withdrawTrans.setOperatorId("SYSTEM");
+            withdrawTrans.setTransTime(LocalDateTime.now());
+            withdrawTrans.setStatus(TransactionEnums.Status.SUCCESS.getCode());
+            withdrawTrans.setRemark("销户-余额清退");
+            transactionMapper.insert(withdrawTrans);
+            accountingService.generateEntries(withdrawTrans);
+
+            // 重新查最新余额（乐观锁更新后可能状态已变）
+            account = accountMapper.selectById(account.getAccountId());
+        }
+
+        // 5. 乐观锁更新状态为 CLOSED(2)，closeDate=今天
+        Account toClose = new Account();
+        toClose.setAccountId(account.getAccountId());
+        toClose.setStatus(AccountEnums.Status.CLOSED.getCode());
+        toClose.setCloseDate(LocalDate.now());
+        toClose.setVersion(account.getVersion());
+        int affected = accountMapper.updateStatusWithVersion(toClose);
+        if (affected == 0) {
+            throw new BusinessException(ResultCode.CONCURRENT_CONFLICT);
+        }
+
+        // 6. 记录销户交易流水
+        String closeTransNo = generateTransNo(account.getBranchCode(), TransType.CLOSE_ACCOUNT.getCode());
+        BusinessTransaction closeTrans = new BusinessTransaction();
+        closeTrans.setTransNo(closeTransNo);
+        closeTrans.setAccountId(account.getAccountId());
+        closeTrans.setOutTradeNo(req.getOutTradeNo());
+        closeTrans.setDcFlag(TransactionEnums.DcFlag.DEBIT.getCode());
+        closeTrans.setTransType(TransType.CLOSE_ACCOUNT.getCode());
+        closeTrans.setTransAmount(BigDecimal.ZERO);
+        closeTrans.setBalanceAfter(BigDecimal.ZERO);
+        closeTrans.setChannel("SYSTEM");
+        closeTrans.setOperatorId("SYSTEM");
+        closeTrans.setTransTime(LocalDateTime.now());
+        closeTrans.setStatus(TransactionEnums.Status.SUCCESS.getCode());
+        closeTrans.setRemark("账户销户");
+        transactionMapper.insert(closeTrans);
+
+        // 7. 会计分录
+        accountingService.generateEntries(closeTrans);
+
+        return new CloseAccountResponse(account.getAccountNo(), account.getCardNo(),
+                toClose.getCloseDate(), toClose.getStatus());
+    }
+
     // ==================== 公共辅助方法 ====================
 
     /**
