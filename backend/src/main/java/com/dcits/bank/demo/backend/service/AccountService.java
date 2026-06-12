@@ -33,17 +33,20 @@ public class AccountService {
     private final BusinessTransactionMapper transactionMapper;
     private final CashTransactionMapper cashTransactionMapper;
     private final AccountingService accountingService;
+    private final InterestService interestService;
 
     public AccountService(CustomerMapper customerMapper,
                           AccountMapper accountMapper,
                           BusinessTransactionMapper transactionMapper,
                           CashTransactionMapper cashTransactionMapper,
-                          AccountingService accountingService) {
+                          AccountingService accountingService,
+                          InterestService interestService) {
         this.customerMapper = customerMapper;
         this.accountMapper = accountMapper;
         this.transactionMapper = transactionMapper;
         this.cashTransactionMapper = cashTransactionMapper;
         this.accountingService = accountingService;
+        this.interestService = interestService;
     }
 
     //  功能1：客户开户
@@ -453,7 +456,11 @@ public class AccountService {
             throw new BusinessException(ResultCode.FROZEN_AMOUNT_EXISTS);
         }
 
-        // 4. 若余额>0，先强制取款全部余额（记录流水+分录），乐观锁扣到0
+        // 4. 销户前强制结息，将未结利息计入余额
+        interestService.settleInterest(account.getAccountId());
+        account = accountMapper.selectById(account.getAccountId());
+
+        // 5. 若余额>0，先强制取款全部余额（记录流水+分录），乐观锁扣到0
         if (account.getBalance().compareTo(BigDecimal.ZERO) > 0) {
             BigDecimal balance = account.getBalance();
             BigDecimal balanceAfter = updateBalanceWithRetry(account.getAccountId(), balance.negate());
@@ -479,7 +486,7 @@ public class AccountService {
             account = accountMapper.selectById(account.getAccountId());
         }
 
-        // 5. 乐观锁更新状态为 CLOSED(2)，closeDate=今天
+        // 6. 乐观锁更新状态为 CLOSED(2)，closeDate=今天
         Account toClose = new Account();
         toClose.setAccountId(account.getAccountId());
         toClose.setStatus(AccountEnums.Status.CLOSED.getCode());
@@ -490,7 +497,7 @@ public class AccountService {
             throw new BusinessException(ResultCode.CONCURRENT_CONFLICT);
         }
 
-        // 6. 记录销户交易流水
+        // 7. 记录销户交易流水
         String closeTransNo = generateTransNo(account.getBranchCode(), TransType.CLOSE_ACCOUNT.getCode());
         BusinessTransaction closeTrans = new BusinessTransaction();
         closeTrans.setTransNo(closeTransNo);
@@ -507,7 +514,7 @@ public class AccountService {
         closeTrans.setRemark("账户销户");
         transactionMapper.insert(closeTrans);
 
-        // 7. 会计分录
+        // 8. 会计分录
         accountingService.generateEntries(closeTrans);
 
         return new CloseAccountResponse(account.getAccountNo(), account.getCardNo(),
