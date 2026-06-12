@@ -453,29 +453,20 @@ public class AccountService {
             throw new BusinessException(ResultCode.FROZEN_AMOUNT_EXISTS);
         }
 
-        // 4. 若余额>0，先强制取款全部余额（记录流水+分录），乐观锁扣到0
+        // 4. 若余额>0，先强制取款全额清退，乐观锁扣到0
         if (account.getBalance().compareTo(BigDecimal.ZERO) > 0) {
             BigDecimal balance = account.getBalance();
             BigDecimal balanceAfter = updateBalanceWithRetry(account.getAccountId(), balance.negate());
 
-            String transNo = generateTransNo(account.getBranchCode(), TransType.WITHDRAW.getCode());
-            BusinessTransaction withdrawTrans = new BusinessTransaction();
-            withdrawTrans.setTransNo(transNo);
-            withdrawTrans.setAccountId(account.getAccountId());
-            withdrawTrans.setOutTradeNo(req.getOutTradeNo() + "_WTH");
-            withdrawTrans.setDcFlag(TransactionEnums.DcFlag.DEBIT.getCode());
-            withdrawTrans.setTransType(TransType.WITHDRAW.getCode());
-            withdrawTrans.setTransAmount(balance);
-            withdrawTrans.setBalanceAfter(balanceAfter);
-            withdrawTrans.setChannel("SYSTEM");
-            withdrawTrans.setOperatorId("SYSTEM");
-            withdrawTrans.setTransTime(LocalDateTime.now());
-            withdrawTrans.setStatus(TransactionEnums.Status.SUCCESS.getCode());
+            BusinessTransaction withdrawTrans = buildTransaction(account.getAccountId(),
+                    req.getOutTradeNo() + "_WTH", TransactionEnums.DcFlag.DEBIT.getCode(),
+                    TransType.WITHDRAW.getCode(), balance, balanceAfter,
+                    "SYSTEM", "SYSTEM", account.getBranchCode());
             withdrawTrans.setRemark("销户-余额清退");
             transactionMapper.insert(withdrawTrans);
             accountingService.generateEntries(withdrawTrans);
 
-            // 重新查最新余额（乐观锁更新后可能状态已变）
+            // 重新获取最新版本号用于下一步状态更新
             account = accountMapper.selectById(account.getAccountId());
         }
 
@@ -490,24 +481,12 @@ public class AccountService {
             throw new BusinessException(ResultCode.CONCURRENT_CONFLICT);
         }
 
-        // 6. 记录销户交易流水
-        String closeTransNo = generateTransNo(account.getBranchCode(), TransType.CLOSE_ACCOUNT.getCode());
-        BusinessTransaction closeTrans = new BusinessTransaction();
-        closeTrans.setTransNo(closeTransNo);
-        closeTrans.setAccountId(account.getAccountId());
-        closeTrans.setOutTradeNo(req.getOutTradeNo());
-        closeTrans.setDcFlag(TransactionEnums.DcFlag.DEBIT.getCode());
-        closeTrans.setTransType(TransType.CLOSE_ACCOUNT.getCode());
-        closeTrans.setTransAmount(BigDecimal.ZERO);
-        closeTrans.setBalanceAfter(BigDecimal.ZERO);
-        closeTrans.setChannel("SYSTEM");
-        closeTrans.setOperatorId("SYSTEM");
-        closeTrans.setTransTime(LocalDateTime.now());
-        closeTrans.setStatus(TransactionEnums.Status.SUCCESS.getCode());
+        // 6. 记录销户交易流水 + 分录
+        BusinessTransaction closeTrans = buildTransaction(account.getAccountId(), req.getOutTradeNo(),
+                TransactionEnums.DcFlag.DEBIT.getCode(), TransType.CLOSE_ACCOUNT.getCode(),
+                BigDecimal.ZERO, BigDecimal.ZERO, "SYSTEM", "SYSTEM", account.getBranchCode());
         closeTrans.setRemark("账户销户");
         transactionMapper.insert(closeTrans);
-
-        // 7. 会计分录
         accountingService.generateEntries(closeTrans);
 
         return new CloseAccountResponse(account.getAccountNo(), account.getCardNo(),
