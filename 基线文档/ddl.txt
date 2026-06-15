@@ -78,7 +78,6 @@ CREATE TABLE business_transaction (
     created_time            DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '落库时间',
     update_time             DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '状态更新时间',
 
-    UNIQUE KEY uk_out_trade_no (out_trade_no),
     KEY idx_acc_time (account_id, trans_time),
     KEY idx_related_trans (related_trans_id),
     CONSTRAINT chk_trans_amount_positive CHECK (trans_amount >= 0)

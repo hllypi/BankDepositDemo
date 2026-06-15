@@ -42,6 +42,7 @@ public class AccountService {
     private final AccountingService accountingService;
     private final InterestRateConfigMapper interestRateConfigMapper;
     private final InterestSettlementMapper interestSettlementMapper;
+    private final IdempotencyService idempotencyService;
     @Lazy
     private final AccountService self;
 
@@ -53,6 +54,7 @@ public class AccountService {
                           DailyBalanceMapper dailyBalanceMapper,
                           InterestRateConfigMapper interestRateConfigMapper,
                           InterestSettlementMapper interestSettlementMapper,
+                          IdempotencyService idempotencyService,
                           @Lazy AccountService self) {
         this.customerMapper = customerMapper;
         this.accountMapper = accountMapper;
@@ -62,6 +64,7 @@ public class AccountService {
         this.dailyBalanceMapper = dailyBalanceMapper;
         this.interestRateConfigMapper = interestRateConfigMapper;
         this.interestSettlementMapper = interestSettlementMapper;
+        this.idempotencyService = idempotencyService;
         this.self = self;
     }
 
@@ -115,10 +118,8 @@ public class AccountService {
         validateTransactionRequest(req.getOutTradeNo(), req.getCardNo(), req.getPassword(),
                 req.getTransAmount(), req.getChannel());
         // 1. 幂等校验
-        BusinessTransaction existing = transactionMapper.selectByOutTradeNo(req.getOutTradeNo());
-        if (existing != null && existing.getStatus().equals(TransactionEnums.Status.SUCCESS.getCode())) {
-            return new DepositResponse(existing.getTransNo(), existing.getBalanceAfter(), existing.getStatus());
-        }
+        DepositResponse cached = idempotencyService.check(req.getOutTradeNo(), DepositResponse.class);
+        if (cached != null) return cached;
 
         // 2. 账户定位 + 验密 + 状态检查
         Account account = locateAndAuthAccount(req.getCardNo(), req.getPassword());
@@ -144,7 +145,9 @@ public class AccountService {
         cashIn.setAmount(req.getTransAmount());
         cashTransactionMapper.insert(cashIn);
 
-        return new DepositResponse(trans.getTransNo(), balanceAfter, trans.getStatus());
+        DepositResponse resp = new DepositResponse(trans.getTransNo(), balanceAfter, trans.getStatus());
+        idempotencyService.save(req.getOutTradeNo(), resp);
+        return resp;
     }
 
     //  功能3：取款交易
@@ -197,7 +200,9 @@ public class AccountService {
         cashOut.setAmount(req.getTransAmount());
         cashTransactionMapper.insert(cashOut);
 
-        return new WithdrawResponse(trans.getTransNo(), balanceAfter, trans.getStatus());
+        WithdrawResponse resp = new WithdrawResponse(trans.getTransNo(), balanceAfter, trans.getStatus());
+        idempotencyService.save(req.getOutTradeNo(), resp);
+        return resp;
     }
 
     // 功能4：转账交易
@@ -222,14 +227,9 @@ public class AccountService {
         if (isEmpty(toCardNo)) {
             throw new BusinessException(ResultCode.PARAM_MISSING, "转入方卡号不能为空");
         }
-        // 1. 幂等校验：同一outTradeNo可能已有转出流水，直接查
-        BusinessTransaction existing = transactionMapper.selectByOutTradeNo(outTradeNo);
-        if (existing != null && existing.getStatus().equals(TransactionEnums.Status.SUCCESS.getCode())) {
-            // 查找关联的转入流水
-            BusinessTransaction related = transactionMapper.selectById(existing.getRelatedTransId());
-            return new TransferResponse(existing.getTransNo(), related != null ? related.getTransNo() : null,
-                    existing.getBalanceAfter(), existing.getStatus());
-        }
+        // 1. 幂等校验
+        TransferResponse cached = idempotencyService.check(outTradeNo, TransferResponse.class);
+        if (cached != null) return cached;
 
         // 2. 校验转出账户
         Account fromAccount = locateAndAuthAccount(fromCardNo, password);
@@ -264,8 +264,7 @@ public class AccountService {
         fromTrans.setRemark(remark);
         transactionMapper.insert(fromTrans);
 
-        // 转入方幂等号加后缀避唯一约束，交易流水号与转出方相同
-        BusinessTransaction toTrans = buildTransaction(transferNo, toAccount.getAccountId(), outTradeNo + "_TO",
+        BusinessTransaction toTrans = buildTransaction(transferNo, toAccount.getAccountId(), outTradeNo,
                 TransactionEnums.DcFlag.CREDIT.getCode(), TransType.TRANSFER.getCode(),
                 transAmount, toBalanceAfter, channel, operatorId);
         toTrans.setCounterPartyAccount(fromCardNo);
@@ -280,8 +279,10 @@ public class AccountService {
         accountingService.generateEntries(fromTrans);
         accountingService.generateEntries(toTrans);
 
-        return new TransferResponse(fromTrans.getTransNo(), toTrans.getTransNo(),
+        TransferResponse resp = new TransferResponse(fromTrans.getTransNo(), toTrans.getTransNo(),
                 fromBalanceAfter, fromTrans.getStatus());
+        idempotencyService.save(outTradeNo, resp);
+        return resp;
     }
 
     /**
@@ -554,13 +555,9 @@ public class AccountService {
         if (isEmpty(req.getPassword())) throw new BusinessException(ResultCode.PARAM_MISSING, "密码不能为空");
         if (isEmpty(req.getOutTradeNo())) throw new BusinessException(ResultCode.PARAM_MISSING, "幂等号不能为空");
 
-        // 1. 幂等校验：同一 outTradeNo 代表已销户
-        BusinessTransaction existing = transactionMapper.selectByOutTradeNo(req.getOutTradeNo());
-        if (existing != null) {
-            Account acct = accountMapper.selectById(existing.getAccountId());
-            return new CloseAccountResponse(acct.getAccountNo(), acct.getCardNo(),
-                    acct.getCloseDate(), acct.getStatus());
-        }
+        // 1. 幂等校验
+        CloseAccountResponse cached = idempotencyService.check(req.getOutTradeNo(), CloseAccountResponse.class);
+        if (cached != null) return cached;
 
         // 2. 账户定位 + 验密 + 状态检查
         Account account = locateAndAuthAccount(req.getCardNo(), req.getPassword());
@@ -613,8 +610,10 @@ public class AccountService {
         transactionMapper.insert(closeTrans);
         accountingService.generateEntries(closeTrans);
 
-        return new CloseAccountResponse(account.getAccountNo(), account.getCardNo(),
+        CloseAccountResponse resp = new CloseAccountResponse(account.getAccountNo(), account.getCardNo(),
                 toClose.getCloseDate(), toClose.getStatus());
+        idempotencyService.save(req.getOutTradeNo(), resp);
+        return resp;
     }
 
     /**
