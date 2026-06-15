@@ -138,17 +138,8 @@ public class AccountService {
         accountingService.generateEntries(trans);
 
         // 6. 记录现金入库
-        CashTransaction cashIn = new CashTransaction();
-        cashIn.setTransId(trans.getTransId());
-        cashIn.setTellerId(req.getOperatorId());
-        cashIn.setCashType(TransactionEnums.CashType.IN.getCode());
-        cashIn.setAmount(req.getTransAmount());
-        cashIn.setBranchCode(account.getBranchCode());
-        cashIn.setBoxId(account.getBranchCode());
-        cashIn.setCurrency(account.getCurrency());
-        cashIn.setBoxBalanceAfter(BigDecimal.ZERO);
-        cashIn.setStatus(1);
-        cashTransactionMapper.insert(cashIn);
+        recordCash(trans.getTransId(), req.getOperatorId(), TransactionEnums.CashType.IN.getCode(),
+                req.getTransAmount(), account, null);
 
         DepositResponse resp = new DepositResponse(trans.getTransNo(), balanceAfter, trans.getStatus());
         idempotencyService.save(req.getOutTradeNo(), resp);
@@ -196,17 +187,8 @@ public class AccountService {
         accountingService.generateEntries(trans);
 
         // 8. 记录现金出库
-        CashTransaction cashOut = new CashTransaction();
-        cashOut.setTransId(trans.getTransId());
-        cashOut.setTellerId(req.getOperatorId());
-        cashOut.setCashType(TransactionEnums.CashType.OUT.getCode());
-        cashOut.setAmount(req.getTransAmount());
-        cashOut.setBranchCode(account.getBranchCode());
-        cashOut.setBoxId(account.getBranchCode());
-        cashOut.setCurrency(account.getCurrency());
-        cashOut.setBoxBalanceAfter(BigDecimal.ZERO);
-        cashOut.setStatus(1);
-        cashTransactionMapper.insert(cashOut);
+        recordCash(trans.getTransId(), req.getOperatorId(), TransactionEnums.CashType.OUT.getCode(),
+                req.getTransAmount(), account, null);
 
         WithdrawResponse resp = new WithdrawResponse(trans.getTransNo(), balanceAfter, trans.getStatus());
         idempotencyService.save(req.getOutTradeNo(), resp);
@@ -596,6 +578,10 @@ public class AccountService {
             withdrawTrans.setRemark("销户-余额清退");
             transactionMapper.insert(withdrawTrans);
             accountingService.generateEntries(withdrawTrans);
+
+            // 现金出库
+            recordCash(withdrawTrans.getTransId(), "SYSTEM", TransactionEnums.CashType.OUT.getCode(),
+                    balance, account, "销户-余额清退");
 
             // 重新获取最新版本号用于下一步状态更新
             account = accountMapper.selectById(account.getAccountId());
@@ -1030,6 +1016,23 @@ public class AccountService {
     /**
      * 交易公共参数校验
      */
+    /** 记录现金尾箱变动 */
+    private void recordCash(Long transId, String tellerId, String cashType,
+                             BigDecimal amount, Account account, String remark) {
+        CashTransaction cash = new CashTransaction();
+        cash.setTransId(transId);
+        cash.setTellerId(tellerId);
+        cash.setBranchCode(account.getBranchCode());
+        cash.setBoxId(account.getBranchCode());
+        cash.setCurrency(account.getCurrency());
+        cash.setCashType(cashType);
+        cash.setAmount(amount);
+        cash.setBoxBalanceAfter(BigDecimal.ZERO);
+        cash.setStatus(1);
+        cash.setRemark(remark);
+        cashTransactionMapper.insert(cash);
+    }
+
     private void validateTransactionRequest(String outTradeNo, String cardNo, String password,
                                             BigDecimal amount, String channel) {
         if (isEmpty(outTradeNo)) throw new BusinessException(ResultCode.PARAM_MISSING, "幂等号不能为空");
