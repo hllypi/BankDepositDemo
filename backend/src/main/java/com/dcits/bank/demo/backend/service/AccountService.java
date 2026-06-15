@@ -357,9 +357,9 @@ public class AccountService {
         int offset = (pageNum - 1) * pageSize;
 
         // 4. 总数 + 分页数据
-        long total = transactionMapper.countByAccountAndTime(account.getAccountId(), start, end, req.getTransType(), req.getDcFlag());
+        long total = transactionMapper.countByAccountAndTime(account.getAccountId(), start, end, req.getTransType(), req.getDcFlag(), req.getAmountMin(), req.getAmountMax());
         List<BusinessTransaction> list = transactionMapper.selectByAccountAndTimePaged(
-                account.getAccountId(), start, end, req.getTransType(), req.getDcFlag(), pageSize, offset);
+                account.getAccountId(), start, end, req.getTransType(), req.getDcFlag(), req.getAmountMin(), req.getAmountMax(), pageSize, offset);
 
         // 5. 组装并脱敏（不暴露 trans_id、对方账号完整明文等）
         List<TransactionItem> items = list.stream().map(t -> new TransactionItem(

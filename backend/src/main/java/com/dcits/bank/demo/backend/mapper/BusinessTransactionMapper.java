@@ -3,6 +3,7 @@ package com.dcits.bank.demo.backend.mapper;
 import com.dcits.bank.demo.backend.entity.BusinessTransaction;
 import org.apache.ibatis.annotations.*;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -62,25 +63,31 @@ public interface BusinessTransactionMapper {
                                                          @Param("endTime") LocalDateTime endTime,
                                                          @Param("transType") String transType);
 
-    /** 分页查询总量，支持可选 transType 过滤 */
+    /** 分页查询总量，支持可选 transType、dcFlag、金额范围过滤 */
     @Select("<script>" +
             "SELECT COUNT(*) FROM business_transaction WHERE account_id = #{accountId} " +
             "AND trans_time >= #{startTime} AND trans_time &lt;= #{endTime} " +
             "<if test='transType != null'> AND trans_type = #{transType}</if>" +
             "<if test='dcFlag != null'> AND dc_flag = #{dcFlag}</if>" +
+            "<if test='amountMin != null'> AND trans_amount >= #{amountMin}</if>" +
+            "<if test='amountMax != null'> AND trans_amount &lt;= #{amountMax}</if>" +
             "</script>")
     long countByAccountAndTime(@Param("accountId") Long accountId,
                                @Param("startTime") LocalDateTime startTime,
                                @Param("endTime") LocalDateTime endTime,
                                @Param("transType") String transType,
-                               @Param("dcFlag") String dcFlag);
+                               @Param("dcFlag") String dcFlag,
+                               @Param("amountMin") BigDecimal amountMin,
+                               @Param("amountMax") BigDecimal amountMax);
 
-    /** 分页查询交易明细，支持可选 transType 和 dcFlag 过滤，按时间倒序 */
+    /** 分页查询交易明细，支持可选 transType、dcFlag 和金额范围过滤，按时间倒序 */
     @Select("<script>" +
             "SELECT * FROM business_transaction WHERE account_id = #{accountId} " +
             "AND trans_time >= #{startTime} AND trans_time &lt;= #{endTime} " +
             "<if test='transType != null'> AND trans_type = #{transType}</if>" +
             "<if test='dcFlag != null'> AND dc_flag = #{dcFlag}</if>" +
+            "<if test='amountMin != null'> AND trans_amount >= #{amountMin}</if>" +
+            "<if test='amountMax != null'> AND trans_amount &lt;= #{amountMax}</if>" +
             "ORDER BY trans_time DESC LIMIT #{limit} OFFSET #{offset}" +
             "</script>")
     List<BusinessTransaction> selectByAccountAndTimePaged(@Param("accountId") Long accountId,
@@ -88,6 +95,8 @@ public interface BusinessTransactionMapper {
                                                           @Param("endTime") LocalDateTime endTime,
                                                           @Param("transType") String transType,
                                                           @Param("dcFlag") String dcFlag,
+                                                          @Param("amountMin") BigDecimal amountMin,
+                                                          @Param("amountMax") BigDecimal amountMax,
                                                           @Param("limit") int limit,
                                                           @Param("offset") int offset);
 }
