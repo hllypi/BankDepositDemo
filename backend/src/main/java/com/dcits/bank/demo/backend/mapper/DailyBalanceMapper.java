@@ -24,7 +24,7 @@ public interface DailyBalanceMapper {
                                                @Param("startDate") LocalDate startDate,
                                                @Param("endDate") LocalDate endDate);
 
-    /** 查询指定账户指定日期的日积数记录（幂等校验用） */
+    /** 查询指定账户指定日期的日积数记录 */
     @Select("SELECT * FROM daily_balance WHERE account_id = #{accountId} AND balance_date = #{balanceDate}")
     DailyBalance selectByAccountAndDate(@Param("accountId") Long accountId,
                                          @Param("balanceDate") LocalDate balanceDate);

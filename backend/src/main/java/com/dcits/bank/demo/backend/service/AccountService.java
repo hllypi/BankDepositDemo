@@ -499,6 +499,7 @@ public class AccountService {
                         endBalance = prev.getEndBalance();
                     } else {
                         // 无交易且无历史快照：冷启动兜底，取账户当前余额
+                        // 我们在开户的时候会有一条交易为零的入账，因此理论上不应该出现这种情况。
                         Account currentAccount = accountMapper.selectById(acc.getAccountId());
                         endBalance = currentAccount != null ? currentAccount.getBalance() : BigDecimal.ZERO;
                     }
