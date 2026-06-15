@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.dcits.bank.demo.backend.mapper.AccountMapper">
+
+    <update id="debitAvailableBalanceForTransfer">
+        UPDATE account
+        SET balance = balance - #{amount},
+            version = version + 1
+        WHERE account_id = #{accountId}
+          AND status = 0
+          AND balance - frozen_amount &gt;= #{amount}
+    </update>
+
+    <update id="creditBalanceForTransfer">
+        UPDATE account
+        SET balance = balance + #{amount},
+            version = version + 1
+        WHERE account_id = #{accountId}
+          AND status = 0
+    </update>
+
+</mapper>

@@ -42,7 +42,8 @@ public class AccountService {
     private final AccountingService accountingService;
     private final InterestRateConfigMapper interestRateConfigMapper;
     private final InterestSettlementMapper interestSettlementMapper;
-    @Lazy private final AccountService self;
+    @Lazy
+    private final AccountService self;
 
     public AccountService(CustomerMapper customerMapper,
                           AccountMapper accountMapper,
@@ -208,11 +209,21 @@ public class AccountService {
      */
     @Transactional(rollbackFor = Exception.class)
     public TransferResponse transfer(TransferRequest req) {
-        validateTransactionRequest(req.getOutTradeNo(), req.getFromCardNo(), req.getPassword(),
-                req.getTransAmount(), req.getChannel());
-        if (isEmpty(req.getToCardNo())) throw new BusinessException(ResultCode.PARAM_MISSING, "转入方卡号不能为空");
+        String outTradeNo = req.getOutTradeNo();
+        String fromCardNo = req.getFromCardNo();
+        String toCardNo = req.getToCardNo();
+        String password = req.getPassword();
+        BigDecimal transAmount = req.getTransAmount();
+        String channel = req.getChannel();
+        String operatorId = req.getOperatorId();
+        String remark = req.getRemark();
+
+        validateTransactionRequest(outTradeNo, fromCardNo, password, transAmount, channel);
+        if (isEmpty(toCardNo)) {
+            throw new BusinessException(ResultCode.PARAM_MISSING, "转入方卡号不能为空");
+        }
         // 1. 幂等校验：同一outTradeNo可能已有转出流水，直接查
-        BusinessTransaction existing = transactionMapper.selectByOutTradeNo(req.getOutTradeNo());
+        BusinessTransaction existing = transactionMapper.selectByOutTradeNo(outTradeNo);
         if (existing != null && existing.getStatus().equals(TransactionEnums.Status.SUCCESS.getCode())) {
             // 查找关联的转入流水
             BusinessTransaction related = transactionMapper.selectById(existing.getRelatedTransId());
@@ -220,11 +231,11 @@ public class AccountService {
                     existing.getBalanceAfter(), existing.getStatus());
         }
 
-        // 2. 转出方账户定位 + 验密
-        Account fromAccount = locateAndAuthAccount(req.getFromCardNo(), req.getPassword());
+        // 2. 校验转出账户
+        Account fromAccount = locateAndAuthAccount(fromCardNo, password);
 
         // 3. 转入方账户校验（需为活期且状态正常）
-        Account toAccount = validateToAccount(req.getToCardNo());
+        Account toAccount = validateToAccount(toCardNo);
 
         if (fromAccount.getAccountId().equals(toAccount.getAccountId())) {
             throw new BusinessException(ResultCode.PARAM_FORMAT_ERROR, "不能向自己转账");
@@ -232,34 +243,34 @@ public class AccountService {
 
         // 4. 转出方可用余额 + 等级限额
         BigDecimal available = fromAccount.getBalance().subtract(fromAccount.getFrozenAmount());
-        if (available.compareTo(req.getTransAmount()) < 0) {
+        if (available.compareTo(transAmount) < 0) {
             throw new BusinessException(ResultCode.BALANCE_INSUFFICIENT);
         }
-        checkLevelLimit(fromAccount.getAccountLevel(), req.getTransAmount());
+        checkLevelLimit(fromAccount.getAccountLevel(), transAmount);// 检查限额
 
-        // 5. 乐观锁：转出方扣减
-        BigDecimal fromBalanceAfter = updateBalanceWithRetry(fromAccount.getAccountId(), req.getTransAmount().negate());
+        // 5. 条件更新：转出方扣减
+        BigDecimal fromBalanceAfter = transferDebit(fromAccount.getAccountId(), transAmount);
 
-        // 6. 乐观锁：转入方增加
-        BigDecimal toBalanceAfter = updateBalanceWithRetry(toAccount.getAccountId(), req.getTransAmount());
+        // 6. 条件更新：转入方增加
+        BigDecimal toBalanceAfter = transferCredit(toAccount.getAccountId(), transAmount);
 
         // 7. 双流水记录 — 共用同一个交易流水号，通过 related_trans_id 关联
         String transferNo = generateTransNo(fromAccount.getBranchCode(), TransType.TRANSFER.getCode());
 
-        BusinessTransaction fromTrans = buildTransaction(transferNo, fromAccount.getAccountId(), req.getOutTradeNo(),
+        BusinessTransaction fromTrans = buildTransaction(transferNo, fromAccount.getAccountId(), outTradeNo,
                 TransactionEnums.DcFlag.DEBIT.getCode(), TransType.TRANSFER.getCode(),
-                req.getTransAmount(), fromBalanceAfter, req.getChannel(), req.getOperatorId());
-        fromTrans.setCounterPartyAccount(req.getToCardNo());
-        fromTrans.setRemark(req.getRemark());
+                transAmount, fromBalanceAfter, channel, operatorId);
+        fromTrans.setCounterPartyAccount(toCardNo);
+        fromTrans.setRemark(remark);
         transactionMapper.insert(fromTrans);
 
         // 转入方幂等号加后缀避唯一约束，交易流水号与转出方相同
-        BusinessTransaction toTrans = buildTransaction(transferNo, toAccount.getAccountId(), req.getOutTradeNo() + "_TO",
+        BusinessTransaction toTrans = buildTransaction(transferNo, toAccount.getAccountId(), outTradeNo + "_TO",
                 TransactionEnums.DcFlag.CREDIT.getCode(), TransType.TRANSFER.getCode(),
-                req.getTransAmount(), toBalanceAfter, req.getChannel(), req.getOperatorId());
-        toTrans.setCounterPartyAccount(req.getFromCardNo());
+                transAmount, toBalanceAfter, channel, operatorId);
+        toTrans.setCounterPartyAccount(fromCardNo);
         toTrans.setRelatedTransId(fromTrans.getTransId());
-        toTrans.setRemark(req.getRemark());
+        toTrans.setRemark(remark);
         transactionMapper.insert(toTrans);
 
         // 互相绑定
@@ -273,7 +284,9 @@ public class AccountService {
                 fromBalanceAfter, fromTrans.getStatus());
     }
 
-    /** 校验转入方账户存在、状态正常、且为活期账户。 */
+    /**
+     * 校验转入方账户存在、状态正常、且为活期账户。
+     */
     private Account validateToAccount(String cardNo) {
         Account account = accountMapper.selectByCardNo(cardNo);
         if (account == null) {
@@ -288,7 +301,9 @@ public class AccountService {
         return account;
     }
 
-    /** 账户等级限额：Ⅱ类单笔≤1万，Ⅲ类单笔≤1000。 */
+    /**
+     * 账户等级限额：Ⅱ类单笔≤1万，Ⅲ类单笔≤1000。
+     */
     private void checkLevelLimit(int accountLevel, BigDecimal amount) {
         if (accountLevel == AccountEnums.Level.LEVEL_II.getCode()
                 && amount.compareTo(new BigDecimal("10000.00")) > 0) {
@@ -427,13 +442,17 @@ public class AccountService {
         );
     }
 
-    /** 卡号脱敏：只显示前6位和后4位 */
+    /**
+     * 卡号脱敏：只显示前6位和后4位
+     */
     private String maskCardNo(String cardNo) {
         if (cardNo == null || cardNo.length() < 10) return cardNo;
         return cardNo.substring(0, 6) + "****" + cardNo.substring(cardNo.length() - 4);
     }
 
-    /** 姓名脱敏：保留首字，其余用 * */
+    /**
+     * 姓名脱敏：保留首字，其余用 *
+     */
     private String maskName(String name) {
         if (name == null || name.isEmpty()) return name;
         if (name.length() == 1) return name;
@@ -650,7 +669,9 @@ public class AccountService {
         interestSettlementMapper.insert(settlement);
     }
 
-    /** 乐观锁更新余额 + 结息日期（销户前结息专用） */
+    /**
+     * 乐观锁更新余额 + 结息日期（销户前结息专用）
+     */
     private void updateBalanceAndSettlementWithRetry(Long accountId, BigDecimal delta) {
         for (int i = 0; i < MAX_RETRY; i++) {
             Account latest = accountMapper.selectById(accountId);
@@ -780,6 +801,7 @@ public class AccountService {
     }
 
     /**
+     *
      * 代理方法 — 用于批量结息时让每账户调用走独立的 @Transactional 事务
      * <p>因为 Spring AOP 自调用无法触发事务切面，需要通过注入自身代理对象调用</p>
      * 
@@ -807,6 +829,51 @@ public class AccountService {
     }
 
     // ==================== 公共辅助方法 ====================
+
+    /**
+     * 扣款操作通过单条条件原子更新语句防止账户透支。
+     */
+    private BigDecimal transferDebit(Long accountId, BigDecimal amount) {
+        int affected = accountMapper.debitAvailableBalanceForTransfer(accountId, amount);
+        Account latest = accountMapper.selectById(accountId);
+        if (affected > 0) {
+            return latest.getBalance();
+        }
+        // 校验账户正常
+        ensureTransferAccountNormal(latest);
+        if (latest.getBalance().subtract(latest.getFrozenAmount()).compareTo(amount) < 0) {
+            throw new BusinessException(ResultCode.BALANCE_INSUFFICIENT);
+        }
+        throw new BusinessException(ResultCode.CONCURRENT_CONFLICT);
+    }
+
+    /**
+     * 转账入账仅需保证收款账户状态正常。
+     */
+    private BigDecimal transferCredit(Long accountId, BigDecimal amount) {
+        int affected = accountMapper.creditBalanceForTransfer(accountId, amount);
+        Account latest = accountMapper.selectById(accountId);
+        if (affected > 0) {
+            return latest.getBalance();
+        }
+        ensureTransferAccountNormal(latest);
+        throw new BusinessException(ResultCode.CONCURRENT_CONFLICT);
+    }
+
+    private void ensureTransferAccountNormal(Account account) {
+        if (account == null) {
+            throw new BusinessException(ResultCode.ACCOUNT_NOT_FOUND);
+        }
+        if (account.getStatus() == AccountEnums.Status.FROZEN.getCode()) {
+            throw new BusinessException(ResultCode.ACCOUNT_FROZEN);
+        }
+        if (account.getStatus() == AccountEnums.Status.CLOSED.getCode()) {
+            throw new BusinessException(ResultCode.ACCOUNT_CLOSED);
+        }
+        if (account.getStatus() != AccountEnums.Status.NORMAL.getCode()) {
+            throw new BusinessException(ResultCode.ACCOUNT_FROZEN, "账户状态异常");
+        }
+    }
 
     /**
      * 乐观锁更新余额。
@@ -851,20 +918,24 @@ public class AccountService {
         return account;
     }
 
-    /** 构建交易流水对象，自动生成业务交易流水号。 */
+    /**
+     * 构建交易流水对象，自动生成业务交易流水号。
+     */
     private BusinessTransaction buildTransaction(Long accountId, String outTradeNo,
-                                                  String dcFlag, String transType,
-                                                  BigDecimal amount, BigDecimal balanceAfter,
-                                                  String channel, String operatorId, String branchCode) {
+                                                 String dcFlag, String transType,
+                                                 BigDecimal amount, BigDecimal balanceAfter,
+                                                 String channel, String operatorId, String branchCode) {
         return buildTransaction(generateTransNo(branchCode, transType),
                 accountId, outTradeNo, dcFlag, transType, amount, balanceAfter, channel, operatorId);
     }
 
-    /** 构建交易流水对象，使用指定的 transNo（转账双方共用）。 */
+    /**
+     * 构建交易流水对象，使用指定的 transNo（转账双方共用）。
+     */
     private BusinessTransaction buildTransaction(String transNo, Long accountId, String outTradeNo,
-                                                  String dcFlag, String transType,
-                                                  BigDecimal amount, BigDecimal balanceAfter,
-                                                  String channel, String operatorId) {
+                                                 String dcFlag, String transType,
+                                                 BigDecimal amount, BigDecimal balanceAfter,
+                                                 String channel, String operatorId) {
         BusinessTransaction trans = new BusinessTransaction();
         trans.setTransNo(transNo);
         trans.setAccountId(accountId);
@@ -938,9 +1009,11 @@ public class AccountService {
         if (isEmpty(req.getChannel())) throw new BusinessException(ResultCode.PARAM_MISSING, "开户渠道不能为空");
     }
 
-    /** 交易公共参数校验 */
+    /**
+     * 交易公共参数校验
+     */
     private void validateTransactionRequest(String outTradeNo, String cardNo, String password,
-                                             BigDecimal amount, String channel) {
+                                            BigDecimal amount, String channel) {
         if (isEmpty(outTradeNo)) throw new BusinessException(ResultCode.PARAM_MISSING, "幂等号不能为空");
         if (isEmpty(cardNo)) throw new BusinessException(ResultCode.PARAM_MISSING, "卡号不能为空");
         if (isEmpty(password)) throw new BusinessException(ResultCode.PARAM_MISSING, "密码不能为空");
