@@ -13,11 +13,9 @@ public class BusinessTransaction {
     /** 内部交易流水号（自增主键，仅内部关联用） */
     private Long transId;
 
-    /** 交易流水号（业务编号，唯一索引 uk_trans_no） */
+    /** 交易流水号（业务编号） */
     private String transNo;
 
-    /** 外部请求幂等号 */
-    private String outTradeNo;
 
     /** 关联流水号（转账双边账互绑的纽带） */
     private Long relatedTransId;

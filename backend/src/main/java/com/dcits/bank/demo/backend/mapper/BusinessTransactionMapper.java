@@ -31,9 +31,9 @@ public interface BusinessTransactionMapper {
     BusinessTransaction selectById(@Param("transId") Long transId);
 
     /** 新增交易流水，返回自增主键 transId */
-    @Insert("INSERT INTO business_transaction (trans_no, out_trade_no, related_trans_id, account_id, counter_party_account, " +
+    @Insert("INSERT INTO business_transaction (trans_no, related_trans_id, account_id, counter_party_account, " +
             "dc_flag, trans_type, currency, trans_amount, balance_after, frozen_amount_after, channel, operator_id, trans_time, status, remark) " +
-            "VALUES (#{transNo}, #{outTradeNo}, #{relatedTransId}, #{accountId}, #{counterPartyAccount}, #{dcFlag}, " +
+            "VALUES (#{transNo}, #{relatedTransId}, #{accountId}, #{counterPartyAccount}, #{dcFlag}, " +
             "#{transType}, #{currency}, #{transAmount}, #{balanceAfter}, #{frozenAmountAfter}, #{channel}, #{operatorId}, #{transTime}, #{status}, #{remark})")
     @Options(useGeneratedKeys = true, keyProperty = "transId")
     int insert(BusinessTransaction transaction);
