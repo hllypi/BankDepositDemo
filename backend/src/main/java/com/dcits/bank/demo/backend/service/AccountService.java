@@ -369,6 +369,8 @@ public class AccountService {
         // 3. 分页参数
         int pageNum = req.getPageNum() != null ? req.getPageNum() : 1;
         int pageSize = req.getPageSize() != null ? req.getPageSize() : 10;
+        if (pageNum < 1) throw new BusinessException(ResultCode.PARAM_FORMAT_ERROR, "页码必须大于0");
+        if (pageSize < 1 || pageSize > 100) throw new BusinessException(ResultCode.PARAM_FORMAT_ERROR, "每页条数必须在1-100之间");
         int offset = (pageNum - 1) * pageSize;
 
         // 4. 总数 + 分页数据
@@ -470,7 +472,7 @@ public class AccountService {
         LocalDateTime startOfYesterday = yesterday.atStartOfDay();
         LocalDateTime startOfToday = LocalDate.now().atStartOfDay();
 
-        List<Account> accounts = accountMapper.selectAllNormal();
+        List<Account> accounts = accountMapper.selectAllActive();
         int success = 0, skip = 0;
         for (Account acc : accounts) {
             try {
@@ -489,8 +491,7 @@ public class AccountService {
                     if (prev != null) {
                         endBalance = prev.getEndBalance();
                     } else {
-                        // 如果没有历史记录，直接从账户表获取当前余额
-                        // 这处理开户后还未生成过日终积数的情况
+                        // 无交易且无历史快照：冷启动兜底，取账户当前余额
                         Account currentAccount = accountMapper.selectById(acc.getAccountId());
                         endBalance = currentAccount != null ? currentAccount.getBalance() : BigDecimal.ZERO;
                     }
@@ -529,7 +530,7 @@ public class AccountService {
             if (prev != null) {
                 endBalance = prev.getEndBalance();
             } else {
-                // 如果没有历史记录，直接从账户表获取当前余额
+                // 无交易且无历史快照：冷启动兜底，取账户当前余额
                 Account currentAccount = accountMapper.selectById(accountId);
                 endBalance = currentAccount != null ? currentAccount.getBalance() : BigDecimal.ZERO;
             }
@@ -617,15 +618,24 @@ public class AccountService {
     }
 
     /**
-     * 销户前结息：计算截止到昨天的未结利息并派发到余额，无积数则跳过。
+     * 销户前结息：与 settleInterest 对齐，算头不算尾，自动补缺失日积数。
      */
     private void settleInterestForClose(Account account) {
-        // 计息区间
+        // 计息区间：从上次结息日（含）到昨天（结息日不算）
         LocalDate startDate = account.getLastSettlementDate() != null
-                ? account.getLastSettlementDate().plusDays(1)
-                : account.getOpenDate().plusDays(1);
+                ? account.getLastSettlementDate()
+                : account.getOpenDate();
         LocalDate endDate = LocalDate.now().minusDays(1);
         if (startDate.isAfter(endDate)) return;
+
+        // 补缺失的日积数
+        LocalDate current = startDate;
+        while (!current.isAfter(endDate)) {
+            if (dailyBalanceMapper.selectByAccountAndDate(account.getAccountId(), current) == null) {
+                generateDailyBalanceForDate(account.getAccountId(), current);
+            }
+            current = current.plusDays(1);
+        }
 
         // 积数和
         BigDecimal accumulated = dailyBalanceMapper.sumBalanceByAccountAndDateRange(
@@ -787,7 +797,7 @@ public class AccountService {
      * @return 账户ID到结息结果的映射，值为"SUCCESS: X元"或"FAILED: 原因"或"无需结息"
      */
     public Map<Long, String> settleInterestAll() {
-        List<Account> accounts = accountMapper.selectAllNormal();
+        List<Account> accounts = accountMapper.selectAllActive();
         Map<Long, String> result = new LinkedHashMap<>();
         for (Account acc : accounts) {
             try {

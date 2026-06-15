@@ -59,6 +59,10 @@ public interface AccountMapper {
     @Select("SELECT * FROM account WHERE status = 0")
     List<Account> selectAllNormal();
 
+    /** 查询所有非销户账户（status != 2），含正常和冻结 */
+    @Select("SELECT * FROM account WHERE status != 2")
+    List<Account> selectAllActive();
+
     /** 更新账户密码 */
     @Update("UPDATE account SET password_hash = #{passwordHash} WHERE account_id = #{accountId}")
     int updatePassword(@Param("accountId") Long accountId, @Param("passwordHash") String passwordHash);
