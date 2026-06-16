@@ -94,6 +94,7 @@ public class AccountService {
         account.setStatus(AccountEnums.Status.NORMAL.getCode());
         account.setVersion(0);
         account.setOpenDate(LocalDate.now());
+        account.setLastSettlementDate(LocalDate.now());
         accountMapper.insert(account);
 
         BusinessTransaction trans = buildTransaction(account.getAccountId(),
