@@ -8,13 +8,13 @@
         <h3>客户开户</h3>
       </div>
       <el-form ref="formRef" :model="form" :rules="rules" size="default" label-width="100px">
-        <el-row :gutter="16">
-          <el-col :span="6">
+        <el-row :gutter="24">
+          <el-col :span="12">
             <el-form-item label="客户姓名" prop="customerName">
               <el-input v-model="form.customerName" placeholder="请输入客户姓名" maxlength="50" />
             </el-form-item>
           </el-col>
-          <el-col :span="6">
+          <el-col :span="12">
             <el-form-item label="证件类型" prop="idType">
               <el-select v-model="form.idType" placeholder="请选择证件类型" style="width:100%">
                 <el-option label="身份证" value="01" />
@@ -23,24 +23,26 @@
               </el-select>
             </el-form-item>
           </el-col>
-          <el-col :span="6">
+        </el-row>
+        <el-row :gutter="24" style="margin-top: 20px;">
+          <el-col :span="12">
             <el-form-item label="证件号码" prop="idNumber">
               <el-input v-model="form.idNumber" placeholder="请输入证件号码" maxlength="30" />
             </el-form-item>
           </el-col>
-          <el-col :span="6">
+          <el-col :span="12">
             <el-form-item label="联系电话" prop="phone">
               <el-input v-model="form.phone" placeholder="请输入联系电话" />
             </el-form-item>
           </el-col>
         </el-row>
-        <el-row :gutter="16" style="margin-top: 20px;">
-          <el-col :span="6">
+        <el-row :gutter="24" style="margin-top: 20px;">
+          <el-col :span="12">
             <el-form-item label="账户密码" prop="password">
               <el-input v-model="form.password" type="password" placeholder="请输入账户密码" show-password />
             </el-form-item>
           </el-col>
-          <el-col :span="6">
+          <el-col :span="12">
             <el-form-item label="账户等级" prop="accountLevel">
               <el-select v-model="form.accountLevel" style="width:100%">
                 <el-option label="Ⅰ类" :value="1" />
@@ -49,12 +51,14 @@
               </el-select>
             </el-form-item>
           </el-col>
-          <el-col :span="6">
+        </el-row>
+        <el-row :gutter="24" style="margin-top: 20px;">
+          <el-col :span="12">
             <el-form-item label="开户行代码" prop="branchCode">
               <el-input v-model="form.branchCode" placeholder="如 010001" />
             </el-form-item>
           </el-col>
-          <el-col :span="6">
+          <el-col :span="12">
             <el-form-item label="开户渠道" prop="channel">
               <el-select v-model="form.channel" style="width:100%">
                 <el-option label="APP" value="APP" />
@@ -64,14 +68,14 @@
             </el-form-item>
           </el-col>
         </el-row>
-        <el-row :gutter="16" style="margin-top: 20px;">
+        <el-row :gutter="24" style="margin-top: 20px;">
           <el-col :span="24">
             <el-form-item label="通讯地址" prop="address">
               <el-input v-model="form.address" placeholder="请输入通讯地址" maxlength="200" />
             </el-form-item>
           </el-col>
         </el-row>
-        <el-row :gutter="16" style="margin-top: 20px;">
+        <el-row :gutter="24" style="margin-top: 20px;">
           <el-col :span="24" class="btn-row">
             <el-button type="primary" @click="onSubmit" :loading="loading">提交开户</el-button>
           </el-col>
@@ -158,8 +162,6 @@ async function onSubmit() {
 }
 .card-hd-icon.blue { background: rgba(99,102,241,0.1); color: #818cf8; }
 .card-hd h3 { font-size: 18px; font-weight: 700; color: #e2e8f0; }
-.form-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0 24px; }
-.submit-btn { width: 100%; margin-top: 12px; height: 46px; border-radius: 10px; font-size: 15px; font-weight: 600; }
 
 /* 结果弹窗 */
 .overlay {

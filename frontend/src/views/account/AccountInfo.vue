@@ -8,7 +8,7 @@
         <h3>账户信息查询</h3>
       </div>
       <el-form ref="formRef" :model="form" :rules="rules" size="default" label-width="100px">
-        <el-row :gutter="16">
+        <el-row :gutter="24">
           <el-col :span="12">
             <el-form-item label="银行卡号" prop="cardNo">
               <el-input v-model="form.cardNo" placeholder="请输入银行卡号" />
@@ -20,7 +20,7 @@
             </el-form-item>
           </el-col>
         </el-row>
-        <el-row :gutter="16" style="margin-top: 20px;">
+        <el-row :gutter="24" style="margin-top: 20px;">
           <el-col :span="24" class="btn-row">
             <el-button type="primary" @click="onQuery" :loading="loading">查询</el-button>
           </el-col>
@@ -148,7 +148,6 @@ async function onQuery() {
 .card-hd-icon.blue { background: rgba(99,102,241,0.1); color: #818cf8; }
 .card-hd-icon.green { background: rgba(34,197,94,0.1); color: #4ade80; }
 .card-hd h3 { font-size: 18px; font-weight: 700; color: #e2e8f0; }
-.submit-btn { width: 100%; margin-top: 12px; height: 46px; border-radius: 10px; font-size: 15px; font-weight: 600; }
 
 .result-card { border-color: rgba(34,197,94,0.15) !important; }
 .info-grid {

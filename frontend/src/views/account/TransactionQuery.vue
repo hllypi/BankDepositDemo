@@ -9,18 +9,22 @@
         <h3>交易流水查询</h3>
       </div>
       <el-form ref="formRef" :model="form" :rules="rules" size="default" label-width="80px">
-        <!-- 第一行：卡号 + 密码 + 时间范围 -->
-        <el-row :gutter="16">
-          <el-col :span="6">
+        <!-- 第一行：卡号 + 密码 -->
+        <el-row :gutter="24">
+          <el-col :span="12">
             <el-form-item label="银行卡号" prop="cardNo">
               <el-input v-model="form.cardNo" placeholder="请输入银行卡号" />
             </el-form-item>
           </el-col>
-          <el-col :span="6">
+          <el-col :span="12">
             <el-form-item label="密码" prop="password">
               <el-input v-model="form.password" type="password" placeholder="账户密码" show-password />
             </el-form-item>
           </el-col>
+        </el-row>
+
+        <!-- 第二行：时间范围 -->
+        <el-row :gutter="24" style="margin-top: 20px;">
           <el-col :span="12">
             <el-form-item label="时间范围">
               <el-date-picker
@@ -33,9 +37,9 @@
           </el-col>
         </el-row>
 
-        <!-- 第二行：交易类型 + 收支类型 -->
-        <el-row :gutter="16" style="margin-top: 20px;">
-          <el-col :span="6">
+        <!-- 第三行：交易类型 + 收支类型 -->
+        <el-row :gutter="24" style="margin-top: 20px;">
+          <el-col :span="12">
             <el-form-item label="交易类型">
               <el-select v-model="filterType" placeholder="全部类型" clearable style="width:100%"
                 @change="curPage = 1">
@@ -43,7 +47,7 @@
               </el-select>
             </el-form-item>
           </el-col>
-          <el-col :span="6">
+          <el-col :span="12">
             <el-form-item label="收支类型">
               <el-radio-group v-model="filterDcFlag" @change="onDcFlagChange">
                 <el-radio-button value="">全部</el-radio-button>
@@ -52,11 +56,10 @@
               </el-radio-group>
             </el-form-item>
           </el-col>
-          <el-col :span="12"></el-col>
         </el-row>
 
-        <!-- 第三行：金额筛选 -->
-        <el-row :gutter="16" style="margin-top: 20px;">
+        <!-- 第四行：金额筛选 -->
+        <el-row :gutter="24" style="margin-top: 20px;">
           <el-col :span="24">
             <el-form-item label="金额筛选">
               <div class="amount-filter">
@@ -78,8 +81,8 @@
           </el-col>
         </el-row>
 
-        <!-- 第四行：按钮 -->
-        <el-row :gutter="16" style="margin-top: 20px;">
+        <!-- 第五行：按钮 -->
+        <el-row :gutter="24" style="margin-top: 20px;">
           <el-col :span="24" class="btn-row">
             <el-button type="primary" @click="onQuery" :loading="loading" :icon="Search">查询</el-button>
             <el-button @click="onReset">重置</el-button>
@@ -309,7 +312,7 @@ async function onQuery(dcFlagOverride) {
       endDate: dateRange.value && dateRange.value[1] ? String(dateRange.value[1]) + ' 23:59:59' : '',
       dcFlag: dcFlagVal || null,
       pageNum: 1,
-      pageSize: 500
+      pageSize: 100
     }
     // 自定义金额范围发后端
     if (filterAmount.value === 'custom') {
@@ -456,12 +459,6 @@ function counterPartyText(tx) {
   font-weight: 700; 
   color: #e2e8f0; 
   margin: 0;
-}
-.btn-col { 
-  display: flex; 
-  align-items: center; 
-  gap: 8px; 
-  justify-content: flex-end;
 }
 .btn-row { 
   display: flex; 

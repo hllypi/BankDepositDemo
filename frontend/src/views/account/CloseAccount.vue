@@ -8,7 +8,7 @@
         <h3>账户销户</h3>
       </div>
       <el-form ref="formRef" :model="form" :rules="rules" size="default" label-width="100px">
-        <el-row :gutter="16">
+        <el-row :gutter="24">
           <el-col :span="12">
             <el-form-item label="银行卡号" prop="cardNo">
               <el-input v-model="form.cardNo" placeholder="请输入要销户的银行卡号" />
@@ -20,7 +20,7 @@
             </el-form-item>
           </el-col>
         </el-row>
-        <el-row :gutter="16" style="margin-top: 20px;">
+        <el-row :gutter="24" style="margin-top: 20px;">
           <el-col :span="24" class="btn-row">
             <el-button type="danger" @click="onSubmit" :loading="loading">确认销户</el-button>
           </el-col>
@@ -117,11 +117,8 @@ async function doClose() {
   width: 44px; height: 44px; border-radius: 12px;
   display: flex; align-items: center; justify-content: center;
 }
-.card-hd-icon.gray { background: rgba(148,163,184,0.1); color: #94a3b8; }
+.card-hd-icon.red { background: rgba(248,113,113,0.1); color: #f87171; }
 .card-hd h3 { font-size: 18px; font-weight: 700; color: #e2e8f0; }
-.submit-btn { width: 100%; margin-top: 12px; height: 46px; border-radius: 10px; font-size: 15px; font-weight: 600; }
-.submit-btn.danger { background: #ef4444; border-color: #ef4444; }
-.submit-btn.danger:hover { background: #dc2626; }
 
 .overlay {
   position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 2000;
