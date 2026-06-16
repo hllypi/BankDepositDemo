@@ -9,18 +9,20 @@
         <h3>单账户结息</h3>
       </div>
       <el-form ref="formRef" :model="form" :rules="rules" size="default" label-width="80px">
-        <el-row :gutter="16">
-          <el-col :span="6">
+        <el-row :gutter="24">
+          <el-col :span="12">
             <el-form-item label="银行卡号" prop="cardNo">
               <el-input v-model="form.cardNo" placeholder="请输入银行卡号" />
             </el-form-item>
           </el-col>
-          <el-col :span="6">
+          <el-col :span="12">
             <el-form-item label="账户密码" prop="password">
               <el-input v-model="form.password" type="password" placeholder="账户密码" show-password />
             </el-form-item>
           </el-col>
-          <el-col :span="12" class="btn-col">
+        </el-row>
+        <el-row :gutter="24" style="margin-top: 20px;">
+          <el-col :span="24" class="btn-row">
             <el-button type="primary" @click="onSettleSingle" :loading="singleLoading">执行结息</el-button>
           </el-col>
         </el-row>
@@ -75,10 +77,10 @@
         </div>
         <h3>批量结息管理</h3>
       </div>
-      <el-row :gutter="16">
+      <el-row :gutter="24">
         <el-col :span="24">
           <el-form size="default">
-            <el-row :gutter="16" style="margin-top: 20px;">
+            <el-row :gutter="24" style="margin-top: 20px;">
               <el-col :span="24" class="btn-row">
                 <el-button type="warning" @click="onSettleAll" :loading="allLoading">执行全部结息</el-button>
                 <el-button type="info" @click="onGenerateDaily" :loading="dailyLoading">日终积数生成</el-button>

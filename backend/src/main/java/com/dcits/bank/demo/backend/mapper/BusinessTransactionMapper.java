@@ -4,6 +4,7 @@ import com.dcits.bank.demo.backend.entity.BusinessTransaction;
 import org.apache.ibatis.annotations.*;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -95,4 +96,11 @@ public interface BusinessTransactionMapper {
                                                           @Param("amountMax") BigDecimal amountMax,
                                                           @Param("limit") int limit,
                                                           @Param("offset") int offset);
+
+    /** 按账户与指定天数查询当日流水和 */
+    @Select("select sum(case when dc_flag = 'C' then trans_amount when dc_flag = 'D' then trans_amount * -1 end) from business_transaction where account_id = #{accountId} and trans_time >= #{targetDate} and trans_time < date_add(#{targetDate}, interval 1 day) ")
+    BigDecimal selectSumByAccAndTime(
+            @Param("accountId") Long accountId,
+            @Param("targetDate") LocalDate targetDate
+    );
 }

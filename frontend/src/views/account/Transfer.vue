@@ -7,36 +7,33 @@
         </div>
         <h3>行内转账</h3>
       </div>
-      <el-form ref="formRef" :model="form" :rules="rules" size="default" label-width="100px">
-        <el-row :gutter="16">
-          <el-col :span="6">
+      <el-form ref="formRef" :model="form" :rules="rules" size="default" label-width="115px">
+        <el-row :gutter="24">
+          <el-col :span="12">
             <el-form-item label="转出银行卡号" prop="fromCardNo">
               <el-input v-model="form.fromCardNo" placeholder="请输入转出方银行卡号" />
             </el-form-item>
           </el-col>
-          <el-col :span="6">
+          <el-col :span="12">
             <el-form-item label="转入银行卡号" prop="toCardNo">
               <el-input v-model="form.toCardNo" placeholder="请输入转入方银行卡号" />
             </el-form-item>
           </el-col>
-          <el-col :span="6">
-            <el-form-item label="转入客户姓名" prop="toCustomerName">
-              <el-input v-model="form.toCustomerName" placeholder="请输入转入方客户姓名" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="6">
+        </el-row>
+        <el-row :gutter="24" style="margin-top: 20px;">
+          <el-col :span="12">
             <el-form-item label="账户密码" prop="password">
               <el-input v-model="form.password" type="password" placeholder="转出方账户密码" show-password />
             </el-form-item>
           </el-col>
-        </el-row>
-        <el-row :gutter="16" style="margin-top: 20px;">
-          <el-col :span="6">
+          <el-col :span="12">
             <el-form-item label="转账金额" prop="transAmount">
               <el-input-number v-model="form.transAmount" :min="0.01" :precision="2" :step="100" style="width:100%" placeholder="0.00" />
             </el-form-item>
           </el-col>
-          <el-col :span="6">
+        </el-row>
+        <el-row :gutter="24" style="margin-top: 20px;">
+          <el-col :span="12">
             <el-form-item label="交易渠道" prop="channel">
               <el-select v-model="form.channel" style="width:100%">
                 <el-option label="APP" value="APP" />
@@ -44,18 +41,20 @@
               </el-select>
             </el-form-item>
           </el-col>
-          <el-col :span="6">
+          <el-col :span="12">
             <el-form-item label="经办人">
               <el-input v-model="form.operatorId" placeholder="经办人或系统标识" />
             </el-form-item>
           </el-col>
-          <el-col :span="6">
+        </el-row>
+        <el-row :gutter="24" style="margin-top: 20px;">
+          <el-col :span="12">
             <el-form-item label="转账附言">
               <el-input v-model="form.remark" placeholder="可选" />
             </el-form-item>
           </el-col>
         </el-row>
-        <el-row :gutter="16" style="margin-top: 20px;">
+        <el-row :gutter="24" style="margin-top: 20px;">
           <el-col :span="24" class="btn-row">
             <el-button type="primary" @click="onSubmit" :loading="loading">确认转账</el-button>
           </el-col>
@@ -71,7 +70,8 @@
           </div>
           <h2>转账成功</h2>
           <div class="rd-table">
-            <div class="rd-row"><span>交易流水号</span><strong>{{ result.transNo }}</strong></div>
+            <div class="rd-row"><span>转出流水号</span><strong>{{ result.fromTransNo }}</strong></div>
+            <div class="rd-row"><span>转入流水号</span><strong>{{ result.toTransNo }}</strong></div>
             <div class="rd-row"><span>转出后余额</span><strong>{{ result.fromBalanceAfter }}</strong></div>
           </div>
           <button class="rd-btn" @click="resultVisible = false">确 定</button>
@@ -88,12 +88,11 @@ import { transfer } from '../../api/index.js'
 const formRef = ref()
 const loading = ref(false)
 const resultVisible = ref(false)
-const result = reactive({ transNo: '', fromBalanceAfter: '' })
+const result = reactive({ fromTransNo: '', toTransNo: '', fromBalanceAfter: '' })
 
 const form = reactive({
   fromCardNo: '',
   toCardNo: '',
-  toCustomerName: '',
   password: '',
   transAmount: 0,
   channel: 'APP',
@@ -105,7 +104,6 @@ const form = reactive({
 const rules = {
   fromCardNo: [{ required: true, message: '请输入转出方银行卡号', trigger: 'blur' }],
   toCardNo: [{ required: true, message: '请输入转入方银行卡号', trigger: 'blur' }],
-  toCustomerName: [{ required: true, message: '请输入转入方客户姓名', trigger: 'blur' }],
   password: [{ required: true, message: '请输入账户密码', trigger: 'blur' }],
   transAmount: [{ required: true, message: '请输入转账金额', trigger: 'blur' }],
   channel: [{ required: true, message: '请选择交易渠道', trigger: 'change' }]
@@ -119,7 +117,8 @@ async function onSubmit() {
     const payload = { ...form }
     payload.outTradeNo = 'TRF_' + Date.now()
     const res = await transfer(payload)
-    result.transNo = res.data.transNo
+    result.fromTransNo = res.data.fromTransNo
+    result.toTransNo = res.data.toTransNo
     result.fromBalanceAfter = res.data.fromBalanceAfter
     resultVisible.value = true
   } catch (e) { }
@@ -137,10 +136,6 @@ async function onSubmit() {
 }
 .card-hd-icon.red { background: rgba(248,113,113,0.1); color: #f87171; }
 .card-hd h3 { font-size: 18px; font-weight: 700; color: #e2e8f0; }
-.form-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0 24px; }
-.submit-btn { width: 100%; margin-top: 12px; height: 46px; border-radius: 10px; font-size: 15px; font-weight: 600; }
-.submit-btn.danger { background: #ef4444; border-color: #ef4444; }
-.submit-btn.danger:hover { background: #dc2626; }
 
 .overlay {
   position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 2000;

@@ -8,23 +8,25 @@
         <h3>存款交易</h3>
       </div>
       <el-form ref="formRef" :model="form" :rules="rules" size="default" label-width="100px">
-        <el-row :gutter="16">
-          <el-col :span="6">
+        <el-row :gutter="24">
+          <el-col :span="12">
             <el-form-item label="银行卡号" prop="cardNo">
               <el-input v-model="form.cardNo" placeholder="请输入银行卡号" />
             </el-form-item>
           </el-col>
-          <el-col :span="6">
+          <el-col :span="12">
             <el-form-item label="账户密码" prop="password">
               <el-input v-model="form.password" type="password" placeholder="请输入账户密码" show-password />
             </el-form-item>
           </el-col>
-          <el-col :span="6">
+        </el-row>
+        <el-row :gutter="24" style="margin-top: 20px;">
+          <el-col :span="12">
             <el-form-item label="存款金额" prop="transAmount">
               <el-input-number v-model="form.transAmount" :min="0.01" :precision="2" :step="100" style="width:100%" placeholder="0.00" />
             </el-form-item>
           </el-col>
-          <el-col :span="6">
+          <el-col :span="12">
             <el-form-item label="交易渠道" prop="channel">
               <el-select v-model="form.channel" style="width:100%">
                 <el-option label="柜面" value="COUNTER" />
@@ -34,19 +36,19 @@
             </el-form-item>
           </el-col>
         </el-row>
-        <el-row :gutter="16" style="margin-top: 20px;">
-          <el-col :span="6">
+        <el-row :gutter="24" style="margin-top: 20px;">
+          <el-col :span="12">
             <el-form-item label="经办人">
               <el-input v-model="form.operatorId" placeholder="经办人或系统标识" />
             </el-form-item>
           </el-col>
-          <el-col :span="18">
+          <el-col :span="12">
             <el-form-item label="交易摘要">
               <el-input v-model="form.remark" placeholder="可选" />
             </el-form-item>
           </el-col>
         </el-row>
-        <el-row :gutter="16" style="margin-top: 20px;">
+        <el-row :gutter="24" style="margin-top: 20px;">
           <el-col :span="24" class="btn-row">
             <el-button type="primary" @click="onSubmit" :loading="loading">确认存款</el-button>
           </el-col>
@@ -61,8 +63,10 @@
             <svg viewBox="0 0 52 52" width="64" height="64"><circle cx="26" cy="26" r="25" fill="#22c55e"/><path d="M14 27l7 7 17-17" stroke="#fff" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </div>
           <h2>存款成功</h2>
-          <div class="rd-amount">+{{ result.balanceAfter }}</div>
-          <p class="rd-meta">交易流水号 {{ result.transNo }}</p>
+          <div class="rd-table">
+            <div class="rd-row"><span>本次存款</span><strong class="credit">+{{ result.transAmount }}</strong></div>
+            <div class="rd-row"><span>存款后余额</span><strong>{{ result.balanceAfter }}</strong></div>
+          </div>
           <button class="rd-btn" @click="resultVisible = false">确 定</button>
         </div>
       </div>
@@ -77,7 +81,7 @@ import { deposit } from '../../api/index.js'
 const formRef = ref()
 const loading = ref(false)
 const resultVisible = ref(false)
-const result = reactive({ transNo: '', balanceAfter: '' })
+const result = reactive({ transAmount: '', balanceAfter: '' })
 
 const form = reactive({
   cardNo: '', password: '', transAmount: 0,
@@ -98,7 +102,7 @@ async function onSubmit() {
   try {
     const payload = { ...form, outTradeNo: 'DEP_' + Date.now() }
     const res = await deposit(payload)
-    result.transNo = res.data.transNo
+    result.transAmount = Number(payload.transAmount).toFixed(2)
     result.balanceAfter = res.data.balanceAfter
     resultVisible.value = true
     form.outTradeNo = ''
@@ -117,8 +121,6 @@ async function onSubmit() {
 }
 .card-hd-icon.green { background: rgba(34,197,94,0.1); color: #4ade80; }
 .card-hd h3 { font-size: 18px; font-weight: 700; color: #e2e8f0; }
-.form-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0 24px; }
-.submit-btn { width: 100%; margin-top: 12px; height: 46px; border-radius: 10px; font-size: 15px; font-weight: 600; }
 
 .overlay {
   position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 2000;
@@ -130,9 +132,15 @@ async function onSubmit() {
   text-align: center; width: 400px; box-shadow: 0 20px 60px rgba(0,0,0,0.15);
 }
 .rd-check { margin-bottom: 12px; }
-.result-dialog h2 { font-size: 20px; color: #e2e8f0; margin-bottom: 16px; }
-.rd-amount { font-size: 36px; font-weight: 700; color: #22c55e; margin-bottom: 6px; }
-.rd-meta { font-size: 13px; color: #94a3b8; margin-bottom: 20px; }
+.result-dialog h2 { font-size: 20px; color: #e2e8f0; margin-bottom: 20px; }
+.rd-table { text-align: left; margin-bottom: 24px; }
+.rd-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.03);
+}
+.rd-row span { font-size: 13px; color: #94a3b8; }
+.rd-row strong { color: #e2e8f0; font-weight: 600; font-size: 14px; }
+.rd-row strong.credit { color: #22c55e; }
 .rd-btn {
   width: 100%; height: 42px; background: linear-gradient(135deg, #6366f1, #8b5cf6); color: #fff; border: none;
   border-radius: 10px; font-size: 15px; cursor: pointer; font-weight: 600;

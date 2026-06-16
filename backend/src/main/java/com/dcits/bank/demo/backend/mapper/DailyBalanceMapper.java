@@ -5,6 +5,7 @@ import org.apache.ibatis.annotations.*;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.List;
 
 /**
  * 账户日积数底表 Mapper
@@ -34,4 +35,28 @@ public interface DailyBalanceMapper {
             "ORDER BY balance_date DESC LIMIT 1")
     DailyBalance selectLatestBefore(@Param("accountId") Long accountId,
                                      @Param("before") LocalDate before);
+
+
+    /** 查找所有未处理的有效账号 */
+    @Select("select acc.account_id from account acc where acc.status = '0' and not exists(select 1 from daily_balance db where acc.account_id = db.account_id and db.balance_date = #{targetDate}) ")
+    List<Long> selectAllNormalAccount(@Param("targetDate") LocalDate targetDate);
+
+    /** 根据日期与时间查找余额 */
+    @Select("select end_balance from daily_balance where account_id = #{accountId} and balance_date = #{targetDate} ")
+    BigDecimal selectLastDayBalance(
+            @Param("accountId") Long accountId,
+            @Param("targetDate") LocalDate targetDate
+    );
+
+    /** 查找账号上一次的余额时间 */
+    @Select("select balance_date, end_balance from daily_balance where account_id = #{accountId} order by balance_date desc limit 1 ")
+    DailyBalance selectLastEntry(@Param("accountId") Long accountId);
+
+    /** 累计计息 */
+    @Select("select sum(end_balance) from daily_balance where account_id = #{accountId} and balance_date >= (select case when last_settlement_date is null then open_date else last_settlement_date end from account where account.account_id = #{accountId}) and balance_date < #{targetDate} ")
+    BigDecimal selectBalanceSum(
+            @Param("accountId") Long accountId,
+            @Param("targetDate") LocalDate targetDate
+    );
+
 }

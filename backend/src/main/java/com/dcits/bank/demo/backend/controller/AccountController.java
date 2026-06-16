@@ -3,11 +3,13 @@ package com.dcits.bank.demo.backend.controller;
 import com.dcits.bank.demo.backend.common.ApiResult;
 import com.dcits.bank.demo.backend.dto.*;
 import com.dcits.bank.demo.backend.service.AccountService;
+import com.dcits.bank.demo.backend.service.InterestService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
 import java.util.Map;
 
 @Tag(name = "账户管理", description = "开户、存款、取款、转账、销户等账户全生命周期管理")
@@ -16,9 +18,11 @@ import java.util.Map;
 public class AccountController {
 
     private final AccountService accountService;
+    private final InterestService interestService;
 
-    public AccountController(AccountService accountService) {
+    public AccountController(AccountService accountService, InterestService interestService) {
         this.accountService = accountService;
+        this.interestService = interestService;
     }
 
     @Operation(summary = "客户开户", description = "创建客户信息并开立个人活期存款账户，返回银行卡号和核心内部账号。同一证件可复用已有客户。")
@@ -97,5 +101,23 @@ public class AccountController {
     @PostMapping("/settle/all")
     public ApiResult<Map<Long, String>> settleInterestAll() {
         return ApiResult.success(accountService.settleInterestAll());
+    }
+
+    @Operation(summary = "每日余额", description = "每日余额测试")
+    @PostMapping("/interest")
+    public ApiResult<Object> interest(@RequestBody InterestRequest request) {
+        return ApiResult.success(interestService.interest(request));
+    }
+
+    @Operation(summary = "每日余额", description = "每日余额测试")
+    @PostMapping("/daily-balance-test")
+    public ApiResult<Object> daily() {
+        return ApiResult.success(interestService.dailyBalanceSchedule(LocalDate.now().plusDays(0)));
+    }
+
+    @Operation(summary = "测试自定义日期存款", description = "测试用自定义日期存款")
+    @PostMapping("/deposit-with-time")
+    public ApiResult<DepositResponse> depositWithTime(@RequestBody DepositRequest request) {
+        return ApiResult.success(interestService.deposit(request));
     }
 }
