@@ -422,16 +422,14 @@ public class AccountService {
         Account account = locateAndAuthAccount(req.getCardNo(), req.getPassword());
         Customer customer = customerMapper.selectById(account.getCustomerId());
 
-        // 脱敏处理
-        String maskedCardNo = maskCardNo(account.getCardNo());
-        String maskedName = maskName(customer != null ? customer.getCustomerName() : "");
+        String customerName = customer != null ? customer.getCustomerName() : "";
 
         BigDecimal availableBalance = account.getBalance().subtract(account.getFrozenAmount());
 
         return new AccountInfoResponse(
-                maskedCardNo,
+                account.getCardNo(),
                 account.getAccountNo(),
-                maskedName,
+                customerName,
                 account.getAccountType(),
                 account.getAccountLevel(),
                 account.getCurrency(),
@@ -442,23 +440,6 @@ public class AccountService {
                 account.getStatus(),
                 account.getOpenDate()
         );
-    }
-
-    /**
-     * 卡号脱敏：只显示前6位和后4位
-     */
-    private String maskCardNo(String cardNo) {
-        if (cardNo == null || cardNo.length() < 10) return cardNo;
-        return cardNo.substring(0, 6) + "****" + cardNo.substring(cardNo.length() - 4);
-    }
-
-    /**
-     * 姓名脱敏：保留首字，其余用 *
-     */
-    private String maskName(String name) {
-        if (name == null || name.isEmpty()) return name;
-        if (name.length() == 1) return name;
-        return name.charAt(0) + "*".repeat(name.length() - 1);
     }
 
     /**

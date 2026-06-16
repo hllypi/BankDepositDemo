@@ -1,24 +1,30 @@
 package com.dcits.bank.demo.backend.dto;
 
+import com.github.houbb.sensitive.annotation.strategy.SensitiveStrategyCardId;
+import com.github.houbb.sensitive.annotation.strategy.SensitiveStrategyChineseName;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.AllArgsConstructor;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
 
 @Data
+@NoArgsConstructor
 @AllArgsConstructor
 @Schema(description = "账户信息响应")
 public class AccountInfoResponse {
 
     @Schema(description = "银行卡号（脱敏）")
+    @SensitiveStrategyCardId
     private String cardNo;
 
     @Schema(description = "核心内部账号")
     private String accountNo;
 
     @Schema(description = "客户姓名（脱敏）", example = "张**")
+    @SensitiveStrategyChineseName
     private String customerName;
 
     @Schema(description = "账户类型")
