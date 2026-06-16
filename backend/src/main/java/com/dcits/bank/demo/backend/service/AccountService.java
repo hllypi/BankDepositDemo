@@ -110,37 +110,51 @@ public class AccountService {
 
     /**
      * 存款交易 — 对应基线文档 功能2。
-     * 幂等防重 + 密码鉴权 + 乐观锁更新余额 + 复式记账。
-     * 柜面渠道额外记录现金入库明细。
+     * 
+     * <p><b>涉及表：</b>account(余额更新) → business_transaction(流水记录) → accounting_entry(复式记账) → cash_transaction(现金入库)</p>
+     * <p>幂等防重 + 密码鉴权 + 乐观锁更新余额 + 复式记账。</p>
+     * <p>柜面渠道额外记录现金入库明细。</p>
+     * 
+     * @param req 存款请求（银行卡号、密码、金额、渠道、经办人、摘要）
+     * @return DepositResponse 交易流水号、交易后余额、交易状态
+     * @throws BusinessException 卡号不存在、密码错误、账户状态异常时抛出
      */
     @Transactional(rollbackFor = Exception.class)
     public DepositResponse deposit(DepositRequest req) {
+        // 0. 公共参数校验：幂等号、卡号、密码、金额、渠道四者缺一不可
         validateTransactionRequest(req.getOutTradeNo(), req.getCardNo(), req.getPassword(),
                 req.getTransAmount(), req.getChannel());
-        // 1. 幂等校验
+
+        // 1. 幂等校验：同一个outTradeNo如果已经成功处理过，直接返回缓存结果，防止重复入账
         DepositResponse cached = idempotencyService.check(req.getOutTradeNo(), DepositResponse.class);
         if (cached != null) return cached;
 
-        // 2. 账户定位 + 验密 + 状态检查
+        // 2. 账户定位 + 验密 + 状态检查（调用account表，走card_no唯一索引）
         Account account = locateAndAuthAccount(req.getCardNo(), req.getPassword());
 
-        // 3. 乐观锁更新余额（余额 + 存款金额），失败重试
+        // 3. 乐观锁更新余额：每次重试重新读取最新余额和版本号，delta为正（加钱）
+        //    涉及表：account — UPDATE balance=balance+#{amount}, version=version+1 WHERE account_id=? AND version=?
         BigDecimal balanceAfter = updateBalanceWithRetry(account.getAccountId(), req.getTransAmount());
 
-        // 4. 记录交易流水
+        // 4. 记录交易流水 — 涉及表：business_transaction
+        //    流水关键字段：trans_no(业务编号)、out_trade_no(幂等号)、dc_flag=C(贷方/收入)、trans_type=01(存款)
         BusinessTransaction trans = buildTransaction(account.getAccountId(),
                 TransactionEnums.DcFlag.CREDIT.getCode(), TransType.DEPOSIT.getCode(),
                 req.getTransAmount(), balanceAfter, req.getChannel(), req.getOperatorId(), account.getBranchCode());
         trans.setRemark(req.getRemark());
         transactionMapper.insert(trans);
 
-        // 5. 会计分录（借1002库存现金 / 贷1001活期存款）
+        // 5. 复式记账：借贷平衡，生成一对会计分录
+        //    借：1002 库存现金（银行资产增加） / 贷：1001 活期存款（客户负债增加）
+        //    涉及表：accounting_entry
         accountingService.generateEntries(trans);
 
-        // 6. 记录现金入库
+        // 6. 柜面渠道（channel=COUNTER）记录现金入库明细
+        //    涉及表：cash_transaction — 记录收钞信息（操作员、金额、钞券类别等）
         recordCash(trans.getTransId(), req.getOperatorId(), TransactionEnums.CashType.IN.getCode(),
                 req.getTransAmount(), account, null);
 
+        // 7. 组装响应并缓存幂等结果
         DepositResponse resp = new DepositResponse(trans.getTransNo(), balanceAfter, trans.getStatus());
         idempotencyService.save(req.getOutTradeNo(), resp);
         return resp;
@@ -150,46 +164,61 @@ public class AccountService {
 
     /**
      * 取款交易 — 对应基线文档 功能3。
-     * 与存款镜像：可用余额校验 + 账户等级限额 + 乐观锁扣减 + 复式记账（借1001贷1002）。
-     * 柜面渠道额外记录现金出库明细。
+     * 
+     * <p><b>涉及表：</b>account(余额扣减) → business_transaction(流水记录) → accounting_entry(复式记账) → cash_transaction(现金出库)</p>
+     * <p>与存款镜像：可用余额校验 + 账户等级限额 + 乐观锁扣减 + 复式记账（借1001贷1002）。</p>
+     * <p>柜面渠道额外记录现金出库明细。</p>
+     * 
+     * @param req 取款请求（银行卡号、密码、金额、渠道、经办人、摘要）
+     * @return WithdrawResponse 交易流水号、交易后余额、交易状态
+     * @throws BusinessException 余额不足、账户状态异常、超过等级限额时抛出
      */
     @Transactional(rollbackFor = Exception.class)
     public WithdrawResponse withdraw(WithdrawRequest req) {
+        // 0. 公共参数校验：幂等号、卡号、密码、金额、渠道四者缺一不可
         validateTransactionRequest(req.getOutTradeNo(), req.getCardNo(), req.getPassword(),
                 req.getTransAmount(), req.getChannel());
-        // 1. 幂等校验
+
+        // 1. 幂等校验：同一个outTradeNo如果已经成功处理过，直接返回缓存结果，防止重复扣款
         WithdrawResponse cached = idempotencyService.check(req.getOutTradeNo(), WithdrawResponse.class);
         if (cached != null) return cached;
 
-        // 2. 账户定位 + 验密 + 状态检查
+        // 2. 账户定位 + 验密 + 状态检查（调用account表，走card_no唯一索引）
         Account account = locateAndAuthAccount(req.getCardNo(), req.getPassword());
 
-        // 3. 可用余额校验（冻结金额不可动用）
+        // 3. 可用余额校验：可用余额 = 总余额 - 冻结金额，取款不能超过可用余额
+        //    涉及表：account（读取balance和frozen_amount字段）
         BigDecimal available = account.getBalance().subtract(account.getFrozenAmount());
         if (available.compareTo(req.getTransAmount()) < 0) {
             throw new BusinessException(ResultCode.BALANCE_INSUFFICIENT);
         }
 
-        // 4. 账户等级限额校验
+        // 4. 账户等级限额校验：Ⅱ类户单笔≤10000元，Ⅲ类户单笔≤1000元
         checkLevelLimit(account.getAccountLevel(), req.getTransAmount());
 
-        // 5. 乐观锁扣减余额
+        // 5. 乐观锁扣减余额：delta为负（减钱），每次重试重新校验可用余额，防止并发超取
+        //    涉及表：account — UPDATE balance=balance-#{amount}, version=version+1 WHERE account_id=? AND version=?
         BigDecimal balanceAfter = updateBalanceWithRetry(account.getAccountId(), req.getTransAmount().negate());
 
-        // 6. 记录交易流水（借方）
+        // 6. 记录交易流水（借方） — 涉及表：business_transaction
+        //    流水关键字段：dc_flag=D(借方/支出)、trans_type=02(取款)
         BusinessTransaction trans = buildTransaction(account.getAccountId(),
                 TransactionEnums.DcFlag.DEBIT.getCode(), TransType.WITHDRAW.getCode(),
                 req.getTransAmount(), balanceAfter, req.getChannel(), req.getOperatorId(), account.getBranchCode());
         trans.setRemark(req.getRemark());
         transactionMapper.insert(trans);
 
-        // 7. 会计分录（借1001活期存款 / 贷1002库存现金）
+        // 7. 复式记账：借贷平衡
+        //    借：1001 活期存款（客户负债减少） / 贷：1002 库存现金（银行资产减少）
+        //    涉及表：accounting_entry
         accountingService.generateEntries(trans);
 
-        // 8. 记录现金出库
+        // 8. 柜面渠道（channel=COUNTER）记录现金出库明细
+        //    涉及表：cash_transaction — 记录付钞信息（操作员、金额、钞券类别等）
         recordCash(trans.getTransId(), req.getOperatorId(), TransactionEnums.CashType.OUT.getCode(),
                 req.getTransAmount(), account, null);
 
+        // 9. 组装响应并缓存幂等结果
         WithdrawResponse resp = new WithdrawResponse(trans.getTransNo(), balanceAfter, trans.getStatus());
         idempotencyService.save(req.getOutTradeNo(), resp);
         return resp;
@@ -319,20 +348,32 @@ public class AccountService {
 
     /**
      * 修改客户信息 — 对应基线文档 功能6。
-     * 通过卡号+密码鉴权，更新客户联系电话和通讯地址，证件信息不可修改。
+     * 
+     * <p><b>涉及表：</b>account(卡号鉴权) → customer(更新电话/地址)</p>
+     * <p>通过卡号+密码鉴权后，更新客户联系电话和通讯地址，证件信息不可修改。</p>
+     * 
+     * @param req 修改请求（银行卡号、密码、新电话、新地址）
+     * @return Long 客户ID
+     * @throws BusinessException 卡号不存在、密码错误、至少修改一项时抛出
      */
     @Transactional(rollbackFor = Exception.class)
     public Long updateCustomer(UpdateCustomerRequest req) {
+        // 参数校验：卡号、密码必填，电话和地址至少修改一项
         if (isEmpty(req.getCardNo())) throw new BusinessException(ResultCode.PARAM_MISSING, "卡号不能为空");
         if (isEmpty(req.getPassword())) throw new BusinessException(ResultCode.PARAM_MISSING, "密码不能为空");
         if (isEmpty(req.getPhone()) && isEmpty(req.getAddress()))
             throw new BusinessException(ResultCode.PARAM_MISSING, "至少需要修改一项（电话或地址）");
+
+        // 1. 卡号+密码鉴权（涉及表：account，走card_no唯一索引）
         Account account = locateAndAuthAccount(req.getCardNo(), req.getPassword());
+
+        // 2. 更新客户联系方式（涉及表：customer，根据customer_id更新phone和address字段）
         Customer customer = new Customer();
         customer.setCustomerId(account.getCustomerId());
         customer.setPhone(req.getPhone());
         customer.setAddress(req.getAddress());
         customerMapper.updateContact(customer);
+
         return account.getCustomerId();
     }
 
@@ -396,17 +437,30 @@ public class AccountService {
 
     /**
      * 修改密码 — 通过卡号+旧密码鉴权，更新为新密码。
+     * 
+     * <p><b>涉及表：</b>account(鉴权 + 更新password_hash字段)</p>
+     * <p>新密码使用BCrypt加密存储，不可逆。</p>
+     * 
+     * @param req 修改密码请求（银行卡号、旧密码、新密码）
+     * @return ChangePasswordResponse 修改结果
+     * @throws BusinessException 卡号不存在、旧密码错误时抛出
      */
     @Transactional(rollbackFor = Exception.class)
     public ChangePasswordResponse changePassword(ChangePasswordRequest req) {
+        // 参数校验
         if (isEmpty(req.getCardNo())) throw new BusinessException(ResultCode.PARAM_MISSING, "卡号不能为空");
         if (isEmpty(req.getOldPassword())) throw new BusinessException(ResultCode.PARAM_MISSING, "原密码不能为空");
         if (isEmpty(req.getNewPassword())) throw new BusinessException(ResultCode.PARAM_MISSING, "新密码不能为空");
 
+        // 1. 卡号+旧密码鉴权：旧密码错误会在locateAndAuthAccount中抛出异常
+        //    涉及表：account（读取card_no和password_hash，BCrypt验证）
         Account account = locateAndAuthAccount(req.getCardNo(), req.getOldPassword());
 
+        // 2. 新密码BCrypt加密并更新
+        //    涉及表：account — UPDATE password_hash=#{newHash} WHERE account_id=#{accountId}
         String newPasswordHash = PasswordUtil.encode(req.getNewPassword());
         accountMapper.updatePassword(account.getAccountId(), newPasswordHash);
+
         return new ChangePasswordResponse(true, "密码修改成功");
     }
 
@@ -914,18 +968,31 @@ public class AccountService {
 
     /**
      * 根据卡号定位账户，校验密码及账户状态。
+     * 
+     * <p><b>涉及表：</b>account（通过card_no唯一索引查询，读取password_hash做BCrypt验证）</p>
+     * <p>校验链：卡号是否存在 → 账户是否冻结 → 账户是否已销户 → 密码是否正确</p>
+     * 
+     * @param cardNo 银行卡号
+     * @param rawPassword 明文密码
+     * @return Account 账户实体
+     * @throws BusinessException 卡号不存在(ACCOUNT_NOT_FOUND)、账户冻结(ACCOUNT_FROZEN)、
+     *         账户已销户(ACCOUNT_CLOSED)、密码错误(PASSWORD_ERROR)
      */
     private Account locateAndAuthAccount(String cardNo, String rawPassword) {
+        // 通过card_no唯一索引查账户（涉及表：account）
         Account account = accountMapper.selectByCardNo(cardNo);
         if (account == null) {
             throw new BusinessException(ResultCode.ACCOUNT_NOT_FOUND);
         }
+        // 状态校验：冻结账户不可操作
         if (account.getStatus() == AccountEnums.Status.FROZEN.getCode()) {
             throw new BusinessException(ResultCode.ACCOUNT_FROZEN);
         }
+        // 状态校验：已销户账户不可操作
         if (account.getStatus() == AccountEnums.Status.CLOSED.getCode()) {
             throw new BusinessException(ResultCode.ACCOUNT_CLOSED);
         }
+        // BCrypt密码验证：将明文密码与数据库中的哈希值比对
         if (!PasswordUtil.matches(rawPassword, account.getPasswordHash())) {
             throw new BusinessException(ResultCode.PASSWORD_ERROR);
         }
@@ -933,7 +1000,17 @@ public class AccountService {
     }
 
     /**
-     * 构建交易流水对象，自动生成业务交易流水号。
+     * 构建交易流水对象 — 存款/取款使用，自动生成交易流水号。
+     * <p>流水号格式：分行代码(6位) + 日期(6位) + 交易类型(2位) + 时间(6位) + 随机4位 + 纳秒2位</p>
+     * 
+     * @param accountId 账户ID
+     * @param dcFlag 借贷标识（D-借方/支出, C-贷方/收入）
+     * @param transType 交易类型（01存款/02取款/03转账/04结息/05销户）
+     * @param amount 交易金额（绝对值）
+     * @param balanceAfter 交易后余额
+     * @param channel 交易渠道（APP/COUNTER/ATM）
+     * @param operatorId 经办人/系统标识
+     * @param branchCode 分行代码
      */
     private BusinessTransaction buildTransaction(Long accountId, String dcFlag, String transType,
                                                  BigDecimal amount, BigDecimal balanceAfter,
@@ -943,24 +1020,26 @@ public class AccountService {
     }
 
     /**
-     * 构建交易流水对象，使用指定的 transNo（转账双方共用）。
+     * 构建交易流水对象 — 转账使用，双方共用同一个transNo实现双边账关联。
+     * 
+     * @param transNo 预先分配的转账流水号（转账双方共用）
      */
     private BusinessTransaction buildTransaction(String transNo, Long accountId, String dcFlag, String transType,
                                                  BigDecimal amount, BigDecimal balanceAfter,
                                                  String channel, String operatorId) {
         BusinessTransaction trans = new BusinessTransaction();
-        trans.setTransNo(transNo);
-        trans.setAccountId(accountId);
-        trans.setDcFlag(dcFlag);
-        trans.setTransType(transType);
-        trans.setCurrency("CNY");
-        trans.setTransAmount(amount);
-        trans.setBalanceAfter(balanceAfter);
-        trans.setFrozenAmountAfter(BigDecimal.ZERO);
-        trans.setChannel(channel);
-        trans.setOperatorId(operatorId);
-        trans.setTransTime(LocalDateTime.now());
-        trans.setStatus(TransactionEnums.Status.SUCCESS.getCode());
+        trans.setTransNo(transNo);                     // 业务交易流水号
+        trans.setAccountId(accountId);                 // 发生账户ID
+        trans.setDcFlag(dcFlag);                       // D-借方/C-贷方
+        trans.setTransType(transType);                 // 01存款/02取款/03转账
+        trans.setCurrency("CNY");                      // 币种，固定人民币
+        trans.setTransAmount(amount);                  // 交易金额绝对值
+        trans.setBalanceAfter(balanceAfter);           // 交易后余额
+        trans.setFrozenAmountAfter(BigDecimal.ZERO);   // 交易后冻结金额
+        trans.setChannel(channel);                     // APP/COUNTER/ATM
+        trans.setOperatorId(operatorId);               // 经办人
+        trans.setTransTime(LocalDateTime.now());       // 交易发生时间
+        trans.setStatus(TransactionEnums.Status.SUCCESS.getCode()); // 交易状态：成功
         return trans;
     }
 
@@ -1042,6 +1121,10 @@ public class AccountService {
         cashTransactionMapper.insert(cash);
     }
 
+    /**
+     * 交易公共参数校验 — 存款/取款/转账共用。
+     * 校验幂等号、卡号、密码、渠道四者不为空，金额必须大于0。
+     */
     private void validateTransactionRequest(String outTradeNo, String cardNo, String password,
                                             BigDecimal amount, String channel) {
         if (isEmpty(outTradeNo)) throw new BusinessException(ResultCode.PARAM_MISSING, "幂等号不能为空");
@@ -1052,6 +1135,9 @@ public class AccountService {
             throw new BusinessException(ResultCode.PARAM_FORMAT_ERROR, "交易金额必须大于0");
     }
 
+    /**
+     * 字符串空值判断：null 或 空白字符串 均视为空。
+     */
     private boolean isEmpty(String s) {
         return s == null || s.isBlank();
     }

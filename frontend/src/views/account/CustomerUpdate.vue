@@ -8,7 +8,7 @@
         <h3>修改客户信息</h3>
       </div>
       <el-form ref="formRef" :model="form" :rules="rules" size="default" label-width="100px">
-        <el-row :gutter="16">
+        <el-row :gutter="24">
           <el-col :span="12">
             <el-form-item label="银行卡号" prop="cardNo">
               <el-input v-model="form.cardNo" placeholder="请输入银行卡号" />
@@ -20,7 +20,7 @@
             </el-form-item>
           </el-col>
         </el-row>
-        <el-row :gutter="16" style="margin-top: 20px;">
+        <el-row :gutter="24" style="margin-top: 20px;">
           <el-col :span="12">
             <el-form-item label="联系电话" prop="phone">
               <el-input v-model="form.phone" placeholder="请输入新的联系电话" />
@@ -32,7 +32,7 @@
             </el-form-item>
           </el-col>
         </el-row>
-        <el-row :gutter="16" style="margin-top: 20px;">
+        <el-row :gutter="24" style="margin-top: 20px;">
           <el-col :span="24" class="btn-row">
             <el-button type="primary" @click="onSubmit" :loading="loading">确认修改</el-button>
           </el-col>
@@ -85,8 +85,6 @@ async function onSubmit() {
   width: 44px; height: 44px; border-radius: 12px;
   display: flex; align-items: center; justify-content: center;
 }
-.card-hd-icon.cyan { background: rgba(6,182,212,0.1); color: #22d3ee; }
+.card-hd-icon.purple { background: rgba(168,85,247,0.1); color: #c084fc; }
 .card-hd h3 { font-size: 18px; font-weight: 700; color: #e2e8f0; }
-.form-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0 24px; }
-.submit-btn { width: 100%; margin-top: 12px; height: 46px; border-radius: 10px; font-size: 15px; font-weight: 600; }
 </style>
