@@ -11,11 +11,8 @@ import java.math.BigDecimal;
 @Schema(description = "转账响应")
 public class TransferResponse {
 
-    @Schema(description = "转出方交易流水号")
-    private String fromTransNo;
-
-    @Schema(description = "转入方交易流水号")
-    private String toTransNo;
+    @Schema(description = "交易流水号")
+    private String transNo;
 
     @Schema(description = "转出方交易后余额")
     private BigDecimal fromBalanceAfter;

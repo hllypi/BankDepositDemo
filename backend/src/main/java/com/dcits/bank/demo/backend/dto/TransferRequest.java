@@ -33,6 +33,11 @@ public class TransferRequest {
     @Pattern(regexp = "^\\d{1,19}$", message = "转入方卡号必须为1-19位数字")
     private String toCardNo;
 
+    @Schema(description = "转入方客户姓名", example = "张三")
+    @NotBlank(message = "转入方客户姓名不能为空")
+    @Size(max = 50, message = "转入方客户姓名长度不能超过50位")
+    private String toCustomerName;
+
     @Schema(description = "转出方账户密码", example = "123456")
     @NotBlank(message = "账户密码不能为空")
     @Pattern(regexp = "^\\d{6}$", message = "账户密码必须为6位数字")
