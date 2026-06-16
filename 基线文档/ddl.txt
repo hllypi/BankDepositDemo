@@ -1,5 +1,5 @@
 -- ============================================================
--- 个人活期存款 — 核心账务数据库建表脚本 (账户分级 & 枚举精简版)
+-- 个人活期存款 — 核心账务数据库建表脚本
 -- DB: MySQL 8.0+
 -- Engine: InnoDB
 -- Charset: utf8mb4
@@ -11,29 +11,28 @@
 CREATE TABLE customer (
     customer_id     BIGINT          AUTO_INCREMENT PRIMARY KEY COMMENT '内部客户ID',
     customer_name   VARCHAR(50)     NOT NULL COMMENT '客户姓名',
-    type            CHAR(2)         NOT NULL COMMENT '客户类型',
+    type            CHAR(2)         NOT NULL COMMENT '客户类型（01-个人，02-企业）',
     id_type         CHAR(2)         NOT NULL COMMENT '证件类型（01-身份证，02-护照等）',
     id_number       VARCHAR(30)     NOT NULL COMMENT '证件号码',
     phone           VARCHAR(20)     DEFAULT NULL COMMENT '联系电话',
     address         VARCHAR(200)    DEFAULT NULL COMMENT '通讯地址',
-    date_of_birth   DATE            DEFAULT NULL COMMENT '出生日期（身份证开户时自动派生）',
-    gender          CHAR(1)         DEFAULT NULL COMMENT '性别（M-男，F-女，身份证开户时自动派生）',
+    date_of_birth   DATE            DEFAULT NULL COMMENT '出生日期',
+    gender          CHAR(1)         DEFAULT NULL COMMENT '性别（M-男，F-女）',
     branch          VARCHAR(20)     NOT NULL COMMENT '开户机构',
     status          TINYINT         NOT NULL DEFAULT 0 COMMENT '状态（0-正常，1-注销，2-冻结）',
     created_time    DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     update_time     DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '最后更新时间',
-
     UNIQUE KEY uk_id_type_number (id_type, id_number)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='客户信息表';
 
 -- ----------------------------
--- 2. 账户信息表 (已加入 account_level 账户等级控制)
+-- 2. 账户信息表
 -- ----------------------------
 CREATE TABLE account (
     account_id              BIGINT          AUTO_INCREMENT PRIMARY KEY COMMENT '内部账户ID(主键)',
     account_no              VARCHAR(30)     NOT NULL COMMENT '核心内部账号',
     card_no                 VARCHAR(19)     NOT NULL COMMENT '银行卡号(对外，Luhn校验位)',
-    password_hash           VARCHAR(256)    NOT NULL COMMENT '密码哈希值（SM3 / Bcrypt + 随机Salt，不可逆）',
+    password_hash           VARCHAR(256)    NOT NULL COMMENT '密码哈希值（Bcrypt + 随机Salt，不可逆）',
     customer_id             BIGINT          NOT NULL COMMENT '所属客户ID',
     account_type            CHAR(4)         NOT NULL DEFAULT 'C01' COMMENT '账户类型（C01-活期存款）',
     account_level           TINYINT         NOT NULL DEFAULT 1 COMMENT '账户等级(1-Ⅰ类, 2-Ⅱ类, 3-Ⅲ类)',
@@ -50,7 +49,6 @@ CREATE TABLE account (
     remark                  VARCHAR(200)    DEFAULT NULL COMMENT '备注',
     created_time            DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     update_time             DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '最后更新时间',
-
     UNIQUE KEY uk_account_no (account_no),
     UNIQUE KEY uk_card_no (card_no),
     KEY idx_customer_id (customer_id),
@@ -58,44 +56,46 @@ CREATE TABLE account (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='账户信息表';
 
 -- ----------------------------
--- 3. 业务交易流水表 (具备幂等、借贷标识、双边账关联)
+-- 3. 业务交易流水表
+-- ----------------------------
 CREATE TABLE business_transaction (
-    trans_id                BIGINT          AUTO_INCREMENT PRIMARY KEY COMMENT '内部交易流水号(PK)',
+    trans_id                BIGINT          AUTO_INCREMENT PRIMARY KEY COMMENT '内部交易流水号',
     trans_no                VARCHAR(30)     NOT NULL COMMENT '交易流水号(业务编号)',
-    out_trade_no            VARCHAR(64)     NOT NULL COMMENT '外部请求幂等号(防重试多次扣款)',
+    out_trade_no            VARCHAR(64)     NOT NULL COMMENT '外部请求幂等号',
     related_trans_id        BIGINT          DEFAULT NULL COMMENT '关联流水号(转账双边账的纽带)',
     account_id              BIGINT          NOT NULL COMMENT '发生账户ID',
     counter_party_account   VARCHAR(30)     DEFAULT NULL COMMENT '对方对外账号',
     dc_flag                 CHAR(1)         NOT NULL COMMENT '资金方向标识(D-借方/扣减，C-贷方/增加)',
     trans_type              CHAR(2)         NOT NULL COMMENT '交易类型（00-开户，01-存款，02-取款，03-转账，04-结息，05-销户）',
+    currency                CHAR(3)         NOT NULL DEFAULT 'CNY' COMMENT '交易币种',
     trans_amount            DECIMAL(18,2)   NOT NULL COMMENT '交易金额绝对值',
-    balance_after           DECIMAL(18,2)   NOT NULL COMMENT '交易后总余额',
+    balance_after           DECIMAL(18,2)   NOT NULL COMMENT '交易后总余额快照',
+    frozen_amount_after     DECIMAL(18,2)   NOT NULL DEFAULT 0.00 COMMENT '交易后冻结金额快照',
     channel                 VARCHAR(20)     NOT NULL COMMENT '交易渠道(APP, COUNTER, ATM, SYSTEM)',
     operator_id             VARCHAR(50)     DEFAULT NULL COMMENT '经办人/系统标识',
     trans_time              DATETIME        NOT NULL COMMENT '发生时间',
-    status                  TINYINT         NOT NULL DEFAULT 0 COMMENT '状态机（0-处理中, 1-成功, 2-失败, 3-冲正）',
+    status                  TINYINT         NOT NULL DEFAULT 0 COMMENT '状态（0-处理中, 1-成功, 2-失败, 3-冲正）',
     remark                  VARCHAR(100)    DEFAULT NULL COMMENT '摘要',
     created_time            DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '落库时间',
     update_time             DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '状态更新时间',
-
     KEY idx_acc_time (account_id, trans_time),
     KEY idx_related_trans (related_trans_id),
     CONSTRAINT chk_trans_amount_positive CHECK (trans_amount >= 0)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='业务交易流水表';
 
 -- ----------------------------
--- 4. 会计分录明细表 (底层依赖Java枚举映射科目代码)
+-- 4. 会计分录明细表
 -- ----------------------------
 CREATE TABLE accounting_entry (
     entry_id        BIGINT          AUTO_INCREMENT PRIMARY KEY COMMENT '分录流水ID',
     voucher_id      VARCHAR(30)     NOT NULL COMMENT '所属记账凭证号',
     trans_id        BIGINT          NOT NULL COMMENT '所属业务流水ID',
     account_code    VARCHAR(20)     NOT NULL COMMENT '会计科目代码(由应用层Enum统一定义)',
+    currency        CHAR(3)         NOT NULL DEFAULT 'CNY' COMMENT '记账币种',
     action          TINYINT         NOT NULL COMMENT '借贷方向（1-借，2-贷）',
     amount          DECIMAL(18,2)   NOT NULL DEFAULT 0.00 COMMENT '发生金额绝对值',
     summary         VARCHAR(100)    DEFAULT NULL COMMENT '分录摘要',
     created_time    DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '记账时间',
-
     KEY idx_trans_id (trans_id),
     KEY idx_account_code_date (account_code, voucher_id),
     CONSTRAINT chk_entry_amount_positive CHECK (amount >= 0)
@@ -105,17 +105,23 @@ CREATE TABLE accounting_entry (
 -- 5. 现金交易尾箱明细表
 -- ----------------------------
 CREATE TABLE cash_transaction (
-    cash_id         BIGINT          AUTO_INCREMENT PRIMARY KEY,
-    trans_id        BIGINT          NOT NULL COMMENT '关联交易流水ID',
-    teller_id       VARCHAR(20)     NOT NULL COMMENT '柜员编号',
-    cash_type       CHAR(1)         NOT NULL COMMENT '现金类型（I-入库，O-出库）',
-    amount          DECIMAL(18,2)   NOT NULL COMMENT '金额',
-    remark          VARCHAR(200)    DEFAULT NULL COMMENT '备注',
-    created_time    DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '操作时间',
-
+    cash_id             BIGINT          AUTO_INCREMENT PRIMARY KEY,
+    trans_id            BIGINT          NOT NULL COMMENT '关联交易流水ID',
+    teller_id           VARCHAR(20)     NOT NULL COMMENT '柜员编号',
+    branch_code         VARCHAR(10)     NOT NULL COMMENT '所属机构代码',
+    box_id              VARCHAR(30)     NOT NULL COMMENT '物理尾箱编号',
+    currency            CHAR(3)         NOT NULL DEFAULT 'CNY' COMMENT '交易币种',
+    cash_type           CHAR(1)         NOT NULL COMMENT '现金类型（I-入库，O-出库）',
+    amount              DECIMAL(18,2)   NOT NULL COMMENT '发生金额绝对值',
+    box_balance_after   DECIMAL(18,2)   NOT NULL COMMENT '交易后该尾箱该币种的总余额(存量快照)',
+    status              TINYINT         NOT NULL DEFAULT 1 COMMENT '状态（1-正常，2-冲正）',
+    remark              VARCHAR(200)    DEFAULT NULL COMMENT '备注',
+    created_time        DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '操作时间',
     KEY idx_trans_id (trans_id),
-    KEY idx_teller (teller_id),
-    CONSTRAINT chk_cash_amount_positive CHECK (amount >= 0)
+    KEY idx_teller_box (teller_id, box_id),
+    KEY idx_branch_currency (branch_code, currency),
+    CONSTRAINT chk_cash_amount_positive CHECK (amount >= 0),
+    CONSTRAINT chk_box_balance_positive CHECK (box_balance_after >= 0)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='柜员现金尾箱交易明细表';
 
 -- ----------------------------
@@ -132,23 +138,22 @@ CREATE TABLE interest_rate_config (
     status          TINYINT         NOT NULL DEFAULT 1 COMMENT '状态（1-有效，0-失效）',
     created_time    DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
     update_time     DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-
     KEY idx_effective (effective_date),
     KEY idx_dimension (account_type, currency, status)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='全局/差异化利率配置表';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='利率配置表';
 
 -- ----------------------------
--- 7. 每日余额表
+-- 7. 每日余额表（日积数底表）
 -- ----------------------------
 CREATE TABLE daily_balance (
     daily_balance_id    BIGINT          AUTO_INCREMENT PRIMARY KEY,
     account_id          BIGINT          NOT NULL COMMENT '内部账户ID',
+    currency            CHAR(3)         NOT NULL DEFAULT 'CNY' COMMENT '币种',
     balance_date        DATE            NOT NULL COMMENT '余额所属日期',
     end_balance         DECIMAL(18,2)   NOT NULL COMMENT '当日最终余额(日积数)',
     created_time        DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
     update_time         DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-
-    UNIQUE KEY uk_account_date (account_id, balance_date),
+    UNIQUE KEY uk_acc_curr_date (account_id, currency, balance_date),
     KEY idx_date (balance_date)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='账户日积数底表';
 
@@ -158,6 +163,7 @@ CREATE TABLE daily_balance (
 CREATE TABLE interest_settlement (
     settlement_id       BIGINT          AUTO_INCREMENT PRIMARY KEY,
     account_id          BIGINT          NOT NULL COMMENT '内部账户ID',
+    currency            CHAR(3)         NOT NULL DEFAULT 'CNY' COMMENT '结息币种',
     settlement_date     DATE            NOT NULL COMMENT '结息执行日期',
     accumulated_amount  DECIMAL(18,2)   NOT NULL COMMENT '该周期内总积数',
     applied_rate        DECIMAL(12,8)   NOT NULL COMMENT '执行时的日利率',
@@ -165,7 +171,6 @@ CREATE TABLE interest_settlement (
     interest_amount     DECIMAL(18,2)   NOT NULL COMMENT '最终派发利息金额',
     trans_id            BIGINT          DEFAULT NULL COMMENT '关联生成的利息派发流水ID',
     created_time        DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '记录创建时间',
-
     KEY idx_account_id (account_id),
     KEY idx_settlement_date (settlement_date),
     KEY idx_trans_id (trans_id)
