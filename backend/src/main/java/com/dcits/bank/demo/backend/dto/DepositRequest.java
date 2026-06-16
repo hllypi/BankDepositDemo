@@ -4,6 +4,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 
 /**
  * 存款请求 — 对应基线文档 功能2 输入要素。
@@ -32,4 +33,7 @@ public class DepositRequest {
 
     @Schema(description = "交易摘要", example = "现金存入")
     private String remark;
+
+    @Schema(description = "测试用交易时间", example = "现金存入")
+    private LocalDateTime transTime;
 }
