@@ -207,6 +207,7 @@ public class AccountService {
         String outTradeNo = req.getOutTradeNo();
         String fromCardNo = req.getFromCardNo();
         String toCardNo = req.getToCardNo();
+        String toCustomerName = req.getToCustomerName();
         String password = req.getPassword();
         BigDecimal transAmount = req.getTransAmount();
         String channel = req.getChannel();
@@ -217,6 +218,9 @@ public class AccountService {
         if (isEmpty(toCardNo)) {
             throw new BusinessException(ResultCode.PARAM_MISSING, "转入方卡号不能为空");
         }
+        if (isEmpty(toCustomerName)) {
+            throw new BusinessException(ResultCode.PARAM_MISSING, "转入方客户姓名不能为空");
+        }
         // 1. 幂等校验
         TransferResponse cached = idempotencyService.check(outTradeNo, TransferResponse.class);
         if (cached != null) return cached;
@@ -224,8 +228,8 @@ public class AccountService {
         // 2. 校验转出账户
         Account fromAccount = locateAndAuthAccount(fromCardNo, password);
 
-        // 3. 转入方账户校验（需为活期且状态正常）
-        Account toAccount = validateToAccount(toCardNo);
+        // 3. 转入方账户校验（需为活期、状态正常，且户名匹配）
+        Account toAccount = validateToAccount(toCardNo, toCustomerName);
 
         if (fromAccount.getAccountId().equals(toAccount.getAccountId())) {
             throw new BusinessException(ResultCode.PARAM_FORMAT_ERROR, "不能向自己转账");
@@ -269,16 +273,15 @@ public class AccountService {
         accountingService.generateEntries(fromTrans);
         accountingService.generateEntries(toTrans);
 
-        TransferResponse resp = new TransferResponse(fromTrans.getTransNo(), toTrans.getTransNo(),
-                fromBalanceAfter, fromTrans.getStatus());
+        TransferResponse resp = new TransferResponse(fromTrans.getTransNo(), fromBalanceAfter, fromTrans.getStatus());
         idempotencyService.save(outTradeNo, resp);
         return resp;
     }
 
     /**
-     * 校验转入方账户存在、状态正常、且为活期账户。
+     * 校验转入方账户存在、状态正常、为活期账户，且户名匹配。
      */
-    private Account validateToAccount(String cardNo) {
+    private Account validateToAccount(String cardNo, String customerName) {
         Account account = accountMapper.selectByCardNo(cardNo);
         if (account == null) {
             throw new BusinessException(ResultCode.ACCOUNT_NOT_FOUND, "转入方账户不存在");
@@ -288,6 +291,12 @@ public class AccountService {
         }
         if (!AccountEnums.Type.DEMAND_DEPOSIT.getCode().equals(account.getAccountType())) {
             throw new BusinessException(ResultCode.PARAM_FORMAT_ERROR, "转入方不是活期存款账户");
+        }
+        Customer customer = customerMapper.selectById(account.getCustomerId());
+        String expectedName = customerName == null ? "" : customerName.trim();
+        String actualName = customer == null || customer.getCustomerName() == null ? "" : customer.getCustomerName().trim();
+        if (!expectedName.equals(actualName)) {
+            throw new BusinessException(ResultCode.PARAM_FORMAT_ERROR, "转入方银行卡号与客户姓名不匹配");
         }
         return account;
     }

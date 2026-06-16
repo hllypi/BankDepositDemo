@@ -20,17 +20,22 @@
             </el-form-item>
           </el-col>
           <el-col :span="6">
+            <el-form-item label="转入客户姓名" prop="toCustomerName">
+              <el-input v-model="form.toCustomerName" placeholder="请输入转入方客户姓名" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="6">
             <el-form-item label="账户密码" prop="password">
               <el-input v-model="form.password" type="password" placeholder="转出方账户密码" show-password />
             </el-form-item>
           </el-col>
+        </el-row>
+        <el-row :gutter="16" style="margin-top: 20px;">
           <el-col :span="6">
             <el-form-item label="转账金额" prop="transAmount">
               <el-input-number v-model="form.transAmount" :min="0.01" :precision="2" :step="100" style="width:100%" placeholder="0.00" />
             </el-form-item>
           </el-col>
-        </el-row>
-        <el-row :gutter="16" style="margin-top: 20px;">
           <el-col :span="6">
             <el-form-item label="交易渠道" prop="channel">
               <el-select v-model="form.channel" style="width:100%">
@@ -44,7 +49,7 @@
               <el-input v-model="form.operatorId" placeholder="经办人或系统标识" />
             </el-form-item>
           </el-col>
-          <el-col :span="12">
+          <el-col :span="6">
             <el-form-item label="转账附言">
               <el-input v-model="form.remark" placeholder="可选" />
             </el-form-item>
@@ -66,8 +71,7 @@
           </div>
           <h2>转账成功</h2>
           <div class="rd-table">
-            <div class="rd-row"><span>转出流水号</span><strong>{{ result.fromTransNo }}</strong></div>
-            <div class="rd-row"><span>转入流水号</span><strong>{{ result.toTransNo }}</strong></div>
+            <div class="rd-row"><span>交易流水号</span><strong>{{ result.transNo }}</strong></div>
             <div class="rd-row"><span>转出后余额</span><strong>{{ result.fromBalanceAfter }}</strong></div>
           </div>
           <button class="rd-btn" @click="resultVisible = false">确 定</button>
@@ -84,11 +88,12 @@ import { transfer } from '../../api/index.js'
 const formRef = ref()
 const loading = ref(false)
 const resultVisible = ref(false)
-const result = reactive({ fromTransNo: '', toTransNo: '', fromBalanceAfter: '' })
+const result = reactive({ transNo: '', fromBalanceAfter: '' })
 
 const form = reactive({
   fromCardNo: '',
   toCardNo: '',
+  toCustomerName: '',
   password: '',
   transAmount: 0,
   channel: 'APP',
@@ -100,6 +105,7 @@ const form = reactive({
 const rules = {
   fromCardNo: [{ required: true, message: '请输入转出方银行卡号', trigger: 'blur' }],
   toCardNo: [{ required: true, message: '请输入转入方银行卡号', trigger: 'blur' }],
+  toCustomerName: [{ required: true, message: '请输入转入方客户姓名', trigger: 'blur' }],
   password: [{ required: true, message: '请输入账户密码', trigger: 'blur' }],
   transAmount: [{ required: true, message: '请输入转账金额', trigger: 'blur' }],
   channel: [{ required: true, message: '请选择交易渠道', trigger: 'change' }]
@@ -113,8 +119,7 @@ async function onSubmit() {
     const payload = { ...form }
     payload.outTradeNo = 'TRF_' + Date.now()
     const res = await transfer(payload)
-    result.fromTransNo = res.data.fromTransNo
-    result.toTransNo = res.data.toTransNo
+    result.transNo = res.data.transNo
     result.fromBalanceAfter = res.data.fromBalanceAfter
     resultVisible.value = true
   } catch (e) { }
