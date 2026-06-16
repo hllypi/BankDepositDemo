@@ -66,4 +66,8 @@ public interface AccountMapper {
     /** 更新账户密码 */
     @Update("UPDATE account SET password_hash = #{passwordHash} WHERE account_id = #{accountId}")
     int updatePassword(@Param("accountId") Long accountId, @Param("passwordHash") String passwordHash);
+
+    /** 更新计息时间 */
+    @Update("update account set last_settlement_date = #{lastSettlementDate} where version = #{version} and account_id = #{accountId} ")
+    int updateLastSettlementDate(Account account);
 }
